@@ -169,6 +169,7 @@ To prevent Nixpacks/Node deploy failures like `EBUSY ... /app/node_modules/.cach
 - `.dockerignore` now excludes `node_modules`, `.cache`, `.next`, `dist`, `build`, and other local artifacts.
 - `.gitignore` excludes the same local caches/build outputs so they never leak into CI/deploy workflows.
 - No Dockerfile is required; Railway + Nixpacks remains the default path.
+- `nixpacks.toml` pins npm cache to `~/.npm` (`/root/.npm` in Railway) and avoids caching under `node_modules` during `npm ci`.
 - Secrets (`GEMINI_API_KEY`, `NREL_API_KEY`, `DATABASE_URL`) must be set in Railway Variables (not image layers).
 
 ## Roadmap (post-v1)
