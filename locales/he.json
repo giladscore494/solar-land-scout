@@ -5,5 +5,22 @@
   "noResults": "לא נמצאו מועמדים שעברו סינון מחמיר.",
   "debugJson": "JSON דיבאג",
   "stateIntelligence": "מודיעין מדינה",
-  "usaOverview": "מבט מאקרו ארה\"ב"
+  "usaOverview": "מבט מאקרו ארה\"ב",
+  "candidateSites": "אתרים מועמדים",
+  "back": "חזרה",
+  "filters": "מסננים",
+  "selectState": "— כל המדינות —",
+  "maxLandCost": "טווח מחיר קרקע מרבי",
+  "stateLabel": "מדינה",
+  "runDebug": "דיבאג ריצה",
+  "perSiteDebug": "דיבאג לכל אתר",
+  "noPassingHint": "לא עברו אתרים את הסינון המחמיר. המידע למטה משקף את מה ש-Gemini באמת ניסה.",
+  "showMap": "הצג מפה",
+  "showPanel": "הצג חלונית",
+  "close": "סגור",
+  "grounding": "מקורות",
+  "groundingUsed": "חיפוש בוצע",
+  "groundingAttempted": "חיפוש נוסה",
+  "groundingFailed": "חיפוש לא זמין",
+  "mapsUnavailable": "הקשר מפות לא זמין"
 }

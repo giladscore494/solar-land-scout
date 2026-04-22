@@ -21,13 +21,18 @@ export async function POST(req: NextRequest) {
   try {
     const result = await runStateAnalysis(state, language);
     if (run) {
-      await saveCandidateSites(run.id, result.passing.map((s) => ({ ...s, run_id: run.id })));
-      await completeAnalysisRun(run.id, "completed", `Generated ${result.total_generated} candidates; ${result.passing.length} passed strict filters.`, {
-        state_code: stateCode,
-        generated: result.total_generated,
-        passing: result.passing.length,
-        sample: result.passing[0]?.gemini_debug_json ?? null,
-      });
+      // Persist ALL generated candidates so debug is recoverable even when
+      // zero sites pass strict filters.
+      await saveCandidateSites(
+        run.id,
+        result.candidates.map((s) => ({ ...s, run_id: run.id }))
+      );
+      await completeAnalysisRun(
+        run.id,
+        "completed",
+        `Generated ${result.total_generated} candidates; ${result.passing.length} passed strict filters.`,
+        result.run_debug
+      );
     }
 
     return NextResponse.json({
@@ -35,7 +40,11 @@ export async function POST(req: NextRequest) {
       status: "completed",
       generated: result.total_generated,
       passing: result.passing.length,
+      // Return all candidates so the UI can always show debug, while still
+      // exposing the passing ones explicitly.
       sites: result.passing,
+      all_candidates: result.candidates,
+      run_debug: result.run_debug,
     });
   } catch (error) {
     if (run) {

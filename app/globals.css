@@ -22,6 +22,7 @@ body {
 /* Premium scrollbar treatment inside panels. */
 .scroll-panel::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 .scroll-panel::-webkit-scrollbar-thumb {
   background: #1f2a3d;
@@ -29,6 +30,37 @@ body {
 }
 .scroll-panel::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* Touch devices: slimmer scrollbars to avoid stealing horizontal space. */
+@media (pointer: coarse) {
+  .scroll-panel::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+}
+
+/* Safe tap targets on iOS/Android; prevent body scroll behind the sheet. */
+html,
+body {
+  overscroll-behavior-y: none;
+}
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent iOS zoom on form controls by keeping input font-size >= 16px */
+select,
+input,
+textarea {
+  font-size: 14px;
+}
+@media (max-width: 640px) {
+  select,
+  input,
+  textarea {
+    font-size: 16px;
+  }
 }
 
 /* Subtle grid texture behind the map for depth. */

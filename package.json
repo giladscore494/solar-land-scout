@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
+    "@google/genai": "^1.50.1",
     "maplibre-gl": "^4.7.1",
     "next": "15.5.15",
     "react": "^18.3.1",
