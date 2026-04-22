@@ -83,7 +83,7 @@ export function loadSeedSites(): CandidateSite[] {
         caution_notes_en: row.caution_notes,
         caution_notes_he: buildSeedCautionsHe(row),
         gemini_summary_en: row.gemini_summary_seed,
-        gemini_summary_he: buildSiteSummaryHe(row.state_name, row),
+        gemini_summary_he: buildSiteSummaryHe(hebrewStateNameFor(row.state_code, row.state_name), row),
         overall_site_score: 0,
         data_source: "seed",
       };
@@ -107,8 +107,8 @@ function buildStateSummaryHe(
   return `${stateNameHe} מציגה בסיס אטרקטיבי לניתוח סולארי עם ציון סולאר ${solar}/100, התאמת קרקע ${land}/100 וזמינות שטחים פתוחים ${openLand}/100. זה עדיין שלב אנליטי מוקדם, ולכן נדרש אימות ברמת תשתית, סביבתיות והיתרים גם כאשר נוחות הפיתוח עומדת על ${development}/100.`;
 }
 
-function buildSiteSummaryHe(stateNameEn: string, site: RawSiteSeed) {
-  return `האתר ${site.title} ב-${stateNameEn} נראה מעניין בשלב זה בזכות משאב סולארי של ${site.solar_resource_value.toFixed(1)} kWh/m²/day, שיפוע מוערך של ${site.slope_estimate.toFixed(1)}% וציון שטח פתוח של ${site.open_land_score}/100. עדיין יש לאמת אמת קרקע, חיבור לרשת וסיכוני היתרים לפני קידום.`;
+function buildSiteSummaryHe(stateNameHe: string, site: RawSiteSeed) {
+  return `האתר ${site.title} ב-${stateNameHe} נראה מעניין בשלב זה בזכות משאב סולארי של ${site.solar_resource_value.toFixed(1)} kWh/m²/day, שיפוע מוערך של ${site.slope_estimate.toFixed(1)}% וציון שטח פתוח של ${site.open_land_score}/100. עדיין יש לאמת אמת קרקע, חיבור לרשת וסיכוני היתרים לפני קידום.`;
 }
 
 function buildSeedReasonsHe(site: RawSiteSeed): string[] {

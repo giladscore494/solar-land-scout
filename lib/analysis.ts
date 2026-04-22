@@ -7,6 +7,8 @@ import { fetchSolarResource } from "./nrel";
 import { centroidOfFeature, getFeatureBounds, getStateFeature, pointInsideFeature } from "./us-state-geometry";
 import { generateCandidateStoredSummaries } from "./gemini";
 
+const GRID_JITTER_FACTOR = 0.7;
+
 export async function runStateAnalysis(
   repository: DataRepository,
   stateCode: string,
@@ -106,8 +108,8 @@ async function generateCandidateSites(state: StateMacro, runId: number): Promise
     for (let col = 0; col < ANALYSIS_CONFIG.gridColumns; col += 1) {
       const offsetA = stableUnit(state.state_code, row, col, "lng");
       const offsetB = stableUnit(state.state_code, row, col, "lat");
-      const lng = bounds.minLng + ((col + 0.5 + (offsetA - 0.5) * 0.7) / ANALYSIS_CONFIG.gridColumns) * lngSpan;
-      const lat = bounds.minLat + ((row + 0.5 + (offsetB - 0.5) * 0.7) / ANALYSIS_CONFIG.gridRows) * latSpan;
+      const lng = bounds.minLng + ((col + 0.5 + (offsetA - 0.5) * GRID_JITTER_FACTOR) / ANALYSIS_CONFIG.gridColumns) * lngSpan;
+      const lat = bounds.minLat + ((row + 0.5 + (offsetB - 0.5) * GRID_JITTER_FACTOR) / ANALYSIS_CONFIG.gridRows) * latSpan;
       if (!pointInsideFeature([lng, lat], feature)) continue;
       candidateSeeds.push(
         buildCandidateSeed(state, runId, row, col, lat, lng, centroid[1] ?? lat, centroid[0] ?? lng)
@@ -212,13 +214,13 @@ function applyNarrative(site: CandidateSite) {
     `Solar estimate clears the ${STRICT_FILTERS.min_solar_resource.toFixed(1)} GHI screening floor.`,
     `Estimated slope of ${site.slope_estimate.toFixed(1)}% supports early utility-scale layout review.`,
     `Open-land score of ${site.open_land_score}/100 supports current-stage screening.`,
-    `${site.distance_to_infra_estimate === "near" ? "Near" : site.distance_to_infra_estimate === "moderate" ? "Moderate" : "Estimated far"} infrastructure proximity keeps the opportunity reviewable.`,
+    `${infraReasonEn(site.distance_to_infra_estimate)} infrastructure proximity keeps the opportunity reviewable.`,
   ];
   site.qualification_reasons_he = [
     `הערכת הסולאר עוברת את סף ה-GHI של ${STRICT_FILTERS.min_solar_resource.toFixed(1)}.`,
     `שיפוע מוערך של ${site.slope_estimate.toFixed(1)}% מתאים לבדיקה ראשונית של פריסת פרויקט.`,
     `ציון שטח פתוח ${site.open_land_score}/100 תומך בסינון בשלב הנוכחי.`,
-    `${site.distance_to_infra_estimate === "near" ? "קרבת תשתית טובה" : site.distance_to_infra_estimate === "moderate" ? "קרבת תשתית בינונית" : "קרבת תשתית רחוקה"} עדיין מאפשרת בחינה ראשונית.`,
+    `${infraReasonHe(site.distance_to_infra_estimate)} עדיין מאפשרת בחינה ראשונית.`,
   ];
   site.caution_notes_en = [
     "Infrastructure proximity is still estimated and not queue-verified.",
@@ -230,6 +232,18 @@ function applyNarrative(site: CandidateSite) {
     "נדרש עדיין אימות סביבתי, קנייני ומסלולי היתרים מחוזיים.",
     "השיפוע עדיין מוערך עד לשילוב נתוני טופוגרפיה מדויקים יותר.",
   ];
+}
+
+function infraReasonEn(value: CandidateSite["distance_to_infra_estimate"]) {
+  if (value === "near") return "Near";
+  if (value === "moderate") return "Moderate";
+  return "Estimated far";
+}
+
+function infraReasonHe(value: CandidateSite["distance_to_infra_estimate"]) {
+  if (value === "near") return "קרבת תשתית טובה";
+  if (value === "moderate") return "קרבת תשתית בינונית";
+  return "קרבת תשתית רחוקה";
 }
 
 function buildRunNotes(siteCount: number, language: Language) {

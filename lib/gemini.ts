@@ -109,9 +109,12 @@ DATA: ${JSON.stringify({
       from_llm: true,
     };
   }
+  const fallbackSummary = language === "he"
+    ? `${localizeStateName(state, language)} מקבלת ${state.macro_total_score.toFixed(1)}/100. ${localizeStateSummary(state, language)}`
+    : `${localizeStateName(state, language)} scores ${state.macro_total_score.toFixed(1)}/100. ${localizeStateSummary(state, language)}`;
   return {
     kind: "state",
-    summary: `${localizeStateName(state, language)} ${language === "he" ? `מקבלת` : `scores`} ${state.macro_total_score.toFixed(1)}/100. ${localizeStateSummary(state, language)}`,
+    summary: fallbackSummary,
     bullets: language === "he"
       ? [
           `ציון סולאר: ${state.average_solar_potential_score}/100`,

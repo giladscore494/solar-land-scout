@@ -24,6 +24,8 @@ const US_MAX_BOUNDS: LngLatBoundsLike = [
   [-50, 72],
 ];
 const STATE_PADDING: PaddingOptions = { top: 90, bottom: 90, left: 80, right: 520 };
+const STATE_LABEL_TEXT_SIZE_STOPS = [3.2, 9, 5.5, 12, 8.5, 13] as const;
+const STATE_LABEL_OPACITY_STOPS = [3.2, 0.42, 4.8, 0.65, 8, 0.18] as const;
 
 interface MapViewProps {
   states: StateMacro[];
@@ -139,7 +141,7 @@ export default function MapView({
           minzoom: 3.2,
           layout: {
             "text-field": ["get", "label"],
-            "text-size": ["interpolate", ["linear"], ["zoom"], 3.2, 9, 5.5, 12, 8.5, 13],
+            "text-size": ["interpolate", ["linear"], ["zoom"], ...STATE_LABEL_TEXT_SIZE_STOPS],
             "text-letter-spacing": 0.03,
             "text-font": ["Open Sans Semibold", "Arial Unicode MS Regular"],
             "text-max-width": 8,
@@ -147,7 +149,7 @@ export default function MapView({
           },
           paint: {
             "text-color": "#d5deef",
-            "text-opacity": ["interpolate", ["linear"], ["zoom"], 3.2, 0.42, 4.8, 0.65, 8, 0.18],
+            "text-opacity": ["interpolate", ["linear"], ["zoom"], ...STATE_LABEL_OPACITY_STOPS],
             "text-halo-color": "rgba(7,10,16,0.95)",
             "text-halo-width": 1.2,
           },

@@ -56,7 +56,7 @@ export default function StateDetail({
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-2">
-        <StatusCard title={t(language, "state.lastStatus")} value={latestRun ? t(language, `status.${latestRun.status}` as never) : "—"} />
+        <StatusCard title={t(language, "state.lastStatus")} value={latestRun ? statusLabel(language, latestRun.status) : "—"} />
         <StatusCard title={t(language, "state.generatedSites")} value={latestRun ? String(latestRun.site_count) : "—"} />
       </div>
 
@@ -129,6 +129,16 @@ function Factor({ label, value }: { label: string; value: number }) {
       </div>
     </div>
   );
+}
+
+function statusLabel(language: Language, status: AnalysisRun["status"]) {
+  const labels: Record<AnalysisRun["status"], string> = {
+    queued: t(language, "status.queued"),
+    running: t(language, "status.running"),
+    completed: t(language, "status.completed"),
+    failed: t(language, "status.failed"),
+  };
+  return labels[status];
 }
 
 function StatusCard({ title, value }: { title: string; value: string }) {

@@ -327,11 +327,17 @@ function StateRow({ state, language, onClick }: { state: StateMacro; language: L
         <span className="flex-1 text-[13px] font-medium text-ink-50">{localizeStateName(state, language)}</span>
         <span className="font-mono text-[12px] text-ink-300">{state.macro_total_score.toFixed(1)}</span>
         <span className="text-[10px] uppercase tracking-wider text-ink-400 group-hover:text-ink-300">
-          {localizeRecommendedLabel(state.recommended_label, language).split(" — ")[0]}
+          {tierPrefix(state, language)}
         </span>
       </button>
     </li>
   );
+}
+
+function tierPrefix(state: StateMacro, language: Language) {
+  const label = localizeRecommendedLabel(state.recommended_label, language);
+  const separatorIndex = label.indexOf(" — ");
+  return separatorIndex >= 0 ? label.slice(0, separatorIndex) : label;
 }
 
 function SiteRow({ site, language, onClick }: { site: CandidateSite; language: Language; onClick: () => void }) {

@@ -4,6 +4,7 @@ import type { Feature, FeatureCollection, Geometry, Position } from "geojson";
 import { fipsToUsps } from "./fips";
 
 let cached: FeatureCollection<Geometry> | null = null;
+const RAY_CAST_EPSILON = 1e-9;
 
 export function getUsStateFeatures(): FeatureCollection<Geometry> {
   if (cached) return cached;
@@ -94,7 +95,7 @@ function rayCast(lng: number, lat: number, ring: number[][]) {
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const [xi, yi] = ring[i];
     const [xj, yj] = ring[j];
-    const intersects = yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / ((yj - yi) || 1e-9) + xi;
+    const intersects = yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / ((yj - yi) || RAY_CAST_EPSILON) + xi;
     if (intersects) inside = !inside;
   }
   return inside;

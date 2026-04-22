@@ -251,7 +251,9 @@ class PostgresRepository implements DataRepository {
       `,
       [runId]
     );
-    return refreshed.rows[0] ? mapAnalysisRunRow(refreshed.rows[0]) : result.rows[0] ? mapAnalysisRunRow({ ...result.rows[0], site_count: next.site_count }) : null;
+    if (refreshed.rows[0]) return mapAnalysisRunRow(refreshed.rows[0]);
+    if (result.rows[0]) return mapAnalysisRunRow({ ...result.rows[0], site_count: next.site_count });
+    return null;
   }
 
   async replaceRunSites(runId: number, stateCode: string, sites: CandidateSite[]) {
