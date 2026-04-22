@@ -3,7 +3,7 @@ import { getRepository } from "@/lib/repository";
 import type { StatesResponse } from "@/types/domain";
 
 export const runtime = "nodejs";
-export const dynamic = "force-static";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   const repo = getRepository();

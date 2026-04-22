@@ -1,0 +1,9 @@
+{
+  "runAnalysis": "הרץ ניתוח",
+  "running": "הניתוח רץ...",
+  "complete": "הניתוח הושלם",
+  "noResults": "לא נמצאו מועמדים שעברו סינון מחמיר.",
+  "debugJson": "JSON דיבאג",
+  "stateIntelligence": "מודיעין מדינה",
+  "usaOverview": "מבט מאקרו ארה\"ב"
+}

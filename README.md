@@ -72,6 +72,7 @@ npm run dev
 | `GEMINI_API_KEY`           | Gemini explanations                         | server |
 | `NREL_API_KEY`             | NREL solar-resource enrichment              | server |
 | `NEXT_PUBLIC_MAPTILER_KEY` | MapTiler dark vector tiles (`dataviz-dark`) | client |
+| `DATABASE_URL` | PostgreSQL connection string for persistent repository | server |
 
 If `NEXT_PUBLIC_MAPTILER_KEY` is missing, the app falls back to a tile-less dark canvas
 with the state polygons as the visual layer. It still works end-to-end.
@@ -136,6 +137,15 @@ points ever appear on the map.
 `data/*.json`. To swap in a real DB later, implement the same interface (e.g. `PrismaRepository`)
 and return it from `getRepository()` — no route or UI code needs to change.
 
+
+## PostgreSQL foundation (Layer 1)
+
+- `lib/repository.ts` now attempts a PostgreSQL-backed repository first and falls back to JSON seeds if DB is unavailable.
+- `DATABASE_URL` is used for DB connectivity.
+- Schema initialization is automatic on first repository access (`lib/db-schema.ts`).
+- If `states_macro` is empty, the existing `data/us_states_macro.json` seed is imported into PostgreSQL.
+- Candidate JSON remains available as a fallback/demo source, but DB rows are preferred when present.
+
 ## Deploying to Railway
 
 1. Push this repository to GitHub.
@@ -150,6 +160,16 @@ and return it from `getRepository()` — no route or UI code needs to change.
    will boot with `next start -p $PORT`.
 
 That's it — no Dockerfile required.
+
+
+### Railway build-context hardening
+
+To prevent Nixpacks/Node deploy failures like `EBUSY ... /app/node_modules/.cache`:
+
+- `.dockerignore` now excludes `node_modules`, `.cache`, `.next`, `dist`, `build`, and other local artifacts.
+- `.gitignore` excludes the same local caches/build outputs so they never leak into CI/deploy workflows.
+- No Dockerfile is required; Railway + Nixpacks remains the default path.
+- Secrets (`GEMINI_API_KEY`, `NREL_API_KEY`, `DATABASE_URL`) must be set in Railway Variables (not image layers).
 
 ## Roadmap (post-v1)
 
