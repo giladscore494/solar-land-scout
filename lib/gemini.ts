@@ -312,16 +312,22 @@ async function callGeminiWithGrounding(
         | undefined;
 
       if (gm && Array.isArray(gm.groundingChunks) && gm.groundingChunks.length > 0) {
-        result.grounding_used = true;
         for (const chunk of gm.groundingChunks) {
           const c = chunk as { web?: { uri?: string; title?: string } };
-          if (c.web) {
+          if (c.web && (c.web.uri || c.web.title)) {
             result.grounding_chunks.push({
               title: c.web.title ?? null,
               url: c.web.uri ?? null,
               source_type: "web",
             });
           }
+        }
+        // Only mark as "used" if we actually got at least one chunk with
+        // identifying content (title or URL). Empty-shell chunks do not count.
+        if (result.grounding_chunks.length > 0) {
+          result.grounding_used = true;
+        } else {
+          result.grounding_failure_reason = "grounding_chunks_empty_content";
         }
       } else {
         result.grounding_failure_reason = "no_grounding_chunks_returned";
