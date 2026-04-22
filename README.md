@@ -1,160 +1,123 @@
 # Solar Land Scout
 
-A production-ready v1 web app for **U.S. utility-scale solar land-opportunity discovery**.
-It combines a full-screen dark USA map, a deterministic macro-ranking + strict site-filtering engine,
-and a Gemini-powered explanation layer.
+Solar Land Scout is a premium analytics-style app for **U.S. utility-scale solar opportunity discovery**.
+It keeps deterministic scoring and strict filters as the source of truth, then uses Gemini only as an explanation/enrichment layer.
 
-- **Deterministic engine** computes scores and filters candidate sites. No AI hallucinations.
-- **Gemini** is used only to explain what the engine already decided.
-- **NREL** provides a lightweight optional solar-resource enrichment layer.
-- Pure **USA focus** — the map is locked to U.S. bounds.
+## What changed in v2
+
+- PostgreSQL-backed state + candidate-site storage
+- Per-state **Run Analysis** workflow
+- Deterministic candidate generation for any U.S. state
+- JSON seed fallback when the database is unavailable
+- Deeper map zoom, visible state labels, and stronger candidate markers
+- English + Hebrew UI support with RTL rendering for Hebrew
 
 ## Stack
 
-- Next.js 15 (App Router) + TypeScript
-- Tailwind CSS (custom dark data-viz palette)
-- MapLibre GL (MapTiler dark style via API key, with graceful fallback)
-- `us-atlas` + `topojson-client` for US state geometry
-- `@google/generative-ai` for Gemini (server-side only)
+- Next.js 15 + TypeScript + Tailwind CSS
+- MapLibre GL + MapTiler dark style fallback handling
+- PostgreSQL via `pg`
+- Gemini server-side only (`@google/generative-ai`)
+- Optional NREL solar-resource enrichment
 
-## Project structure
+## Environment variables
 
-```
-app/
-  api/
-    states/route.ts     # GET macro state rankings
-    sites/route.ts      # GET candidate sites (filtered)
-    explain/route.ts    # POST Gemini-backed explanations
-  page.tsx              # main map experience
-  layout.tsx
-  globals.css
-components/
-  AppShell.tsx          # top-level client shell
-  MapView.tsx           # MapLibre-powered dark USA map
-  Sidebar.tsx           # filters + state list + site list
-  StateDetail.tsx       # state drill-down panel
-  SiteDetail.tsx        # site drill-down panel
-  Legend.tsx
-lib/
-  scoring-config.ts     # single source of truth for weights + thresholds
-  scoring.ts            # deterministic scoring engine
-  filters.ts            # strict + user filters
-  repository.ts         # DataRepository abstraction (JSON today, DB tomorrow)
-  gemini.ts             # server-only Gemini integration with fallback
-  nrel.ts               # optional NREL solar-resource enrichment layer
-  color-ramp.ts         # shared choropleth colors
-  fips.ts               # FIPS → USPS state code mapping
-data/
-  us_states_macro.json  # seed macro data for all 50 states + DC
-  candidate_sites.json  # seed candidate sites (Arizona + NV + NM)
-types/
-  domain.ts             # shared TS types
+Copy `.env.example` to `.env.local` and fill in what you have:
+
+```bash
+cp .env.example .env.local
 ```
 
-## Getting started (local)
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | Recommended | PostgreSQL connection string. Railway sets this automatically once Postgres is attached. |
+| `GEMINI_API_KEY` | Optional | Gemini explanations and stored candidate summaries. Falls back deterministically when missing. |
+| `NREL_API_KEY` | Optional | Point-level solar-resource enrichment during analysis runs. |
+| `NEXT_PUBLIC_MAPTILER_KEY` | Optional | Dark basemap tiles for the map. The app still works without it. |
+
+## Local setup
 
 Requires **Node.js 20+**.
 
 ```bash
-cp .env.example .env.local
-# then fill in your keys — all are optional for the app to boot,
-# but Gemini/NREL/MapTiler features degrade gracefully when missing.
-
 npm install
 npm run dev
-# visit http://localhost:3000
 ```
 
-### Environment variables
+Open `http://localhost:3000`.
 
-| Variable                   | Purpose                                     | Side   |
-| -------------------------- | ------------------------------------------- | ------ |
-| `GEMINI_API_KEY`           | Gemini explanations                         | server |
-| `NREL_API_KEY`             | NREL solar-resource enrichment              | server |
-| `NEXT_PUBLIC_MAPTILER_KEY` | MapTiler dark vector tiles (`dataviz-dark`) | client |
+### Database initialization
 
-If `NEXT_PUBLIC_MAPTILER_KEY` is missing, the app falls back to a tile-less dark canvas
-with the state polygons as the visual layer. It still works end-to-end.
+No migration framework is required for v2. On first database-backed request the app will:
 
-If `GEMINI_API_KEY` is missing or Gemini times out, the `/api/explain` endpoint returns a
-deterministic fallback summary built from the seed data and scoring factors.
+1. connect using `DATABASE_URL`
+2. create `states_macro`, `analysis_runs`, and `candidate_sites` if they do not exist
+3. seed `states_macro` from `data/us_states_macro.json` when the table is empty
+
+If the database is unavailable, the macro ranking and demo seed sites still load from JSON so the app does not break.
+
+## How state analysis works
+
+1. Select a state in the sidebar or on the map
+2. Click **Run Analysis / הרץ ניתוח**
+3. The server creates an `analysis_runs` record
+4. Deterministic code generates candidate points inside the selected state geometry
+5. Optional NREL enrichment updates solar-resource values where available
+6. Strict filters decide which candidates survive
+7. Passing candidates are stored in PostgreSQL under that run
+8. Gemini summary text is generated only after structured candidate data exists
+9. The latest run results appear in the map and sidebar
+
+Important: this is still a current-stage analytics product, **not** parcel-truth GIS. Coordinates, slope, land-cost band, and infrastructure proximity remain screening signals that still need project-level verification.
+
+## Bilingual UI
+
+- Use the language toggle in the top-left header
+- English and Hebrew UI labels are localized from `locales/en.json` and `locales/he.json`
+- Hebrew renders RTL in the app shell and panels
+- State names in panels and custom map labels support both languages
+
+## API surface
+
+- `GET /api/states` — macro state rankings + DB availability
+- `GET /api/sites?state=XX` — latest candidate sites for a state, with JSON fallback when needed
+- `GET /api/analysis-runs?state=XX` — latest and recent runs for a state
+- `POST /api/analyze-state` — create and persist a fresh state analysis run
+- `POST /api/explain` — safe Gemini explanation endpoint with deterministic fallback
+
+## Deterministic boundaries
+
+The code remains the source of truth for:
+
+- macro scoring
+- site scoring
+- strict filter pass/fail
+- generated coordinates
+- candidate persistence
+
+Gemini is limited to:
+
+- macro explanations
+- candidate explanations
+- risk framing / “still to verify” copy
+- stored narrative summaries after structured data exists
+
+## Railway deployment
+
+1. Deploy the repo to Railway as a normal Node.js app
+2. Attach PostgreSQL in Railway
+3. Ensure `DATABASE_URL` is available in Railway variables
+4. Add optional `GEMINI_API_KEY`, `NREL_API_KEY`, and `NEXT_PUBLIC_MAPTILER_KEY`
+5. Railway can keep the default build/start flow from `package.json`
+
+No Dockerfile is required.
 
 ## Scripts
 
 ```bash
-npm run dev        # start Next.js dev server
-npm run build      # production build
-npm run start      # start the built app (honors $PORT)
-npm run lint       # next lint
-npm run typecheck  # tsc --noEmit
+npm run dev
+npm run lint
+npm run typecheck
+npm run build
+npm run start
 ```
-
-## How the scoring works
-
-### Macro state ranking (`lib/scoring-config.ts`)
-
-Weighted blend of five 0–100 sub-scores:
-
-- Solar potential — **35%**
-- Land cost — **25%**
-- Electricity price — **15%**
-- Open-land availability — **15%**
-- Development friendliness — **10%**
-
-`macro_total_score` is always recomputed from the seed factors on load — the JSON cannot
-drift away from the engine.
-
-### Site-level scoring (`lib/scoring.ts`)
-
-`overall_site_score` is computed from `solar_resource_value` (GHI), slope, open-land score,
-land-cost band, and infra proximity. All constants are centralized in `scoring-config.ts`.
-
-### Strict v1 filters (`lib/filters.ts`)
-
-A candidate site must clear every hard threshold before it is eligible for the map:
-
-- `solar_resource_value >= 5.0`
-- `slope_estimate <= 5%`
-- `open_land_score >= 60`
-- `estimated_land_cost_band ∈ {low, moderate}`
-- `distance_to_infra_estimate ∈ {near, moderate}`
-- `overall_site_score >= 65`
-
-The sidebar's **Strict only** toggle (ON by default) enforces this at the UI layer so no "maybe"
-points ever appear on the map.
-
-## Gemini usage boundaries
-
-- **Server-side only.** The Gemini API key never touches the browser.
-- Explanations use strict JSON mode, a tight prompt, a timeout, and a try/catch fallback.
-- The model **never** produces coordinates, filter truth, geometry, raw land prices, or pass/fail —
-  all of those come from the deterministic engine. Gemini only narrates them.
-
-## Data extensibility
-
-`lib/repository.ts` defines a `DataRepository` interface. V1 ships a `JsonRepository` reading
-`data/*.json`. To swap in a real DB later, implement the same interface (e.g. `PrismaRepository`)
-and return it from `getRepository()` — no route or UI code needs to change.
-
-## Deploying to Railway
-
-1. Push this repository to GitHub.
-2. In Railway, **New Project → Deploy from GitHub repo** and pick this repo.
-3. Railway auto-detects a Node.js app. The default build/start commands in `package.json`
-   (`npm run build` + `npm run start`) are Railway-compatible. The included `railway.toml` pins them.
-4. Set environment variables in **Project → Variables**:
-   - `GEMINI_API_KEY`
-   - `NREL_API_KEY`
-   - `NEXT_PUBLIC_MAPTILER_KEY`
-5. Deploy. Railway will build, expose a public URL on its managed `$PORT`, and the app
-   will boot with `next start -p $PORT`.
-
-That's it — no Dockerfile required.
-
-## Roadmap (post-v1)
-
-- Swap JSON seeds for live data sources: NREL NSRDB for solar, EIA for electricity prices,
-  USGS DEM for true slope, parcel datasets for land cost.
-- Candidate-site generator: grid U.S. BLM/state-trust land → apply strict filters server-side.
-- Persist explanations in a cache (Redis) keyed by `(kind, id, data_hash)`.
-- Add authenticated saved-searches, projects, and export to KML/GeoJSON.

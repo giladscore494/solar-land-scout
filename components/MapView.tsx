@@ -253,7 +253,8 @@ export default function MapView({
       mapRef.current?.remove();
       mapRef.current = null;
     };
-  }, [language, onSelectSite, onSelectState, states]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;

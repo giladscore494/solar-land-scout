@@ -61,3 +61,12 @@ body {
   background-color: transparent !important;
   filter: invert(0.9) hue-rotate(180deg);
 }
+
+html[dir="rtl"] body {
+  direction: rtl;
+}
+
+html[dir="rtl"] .maplibregl-ctrl-top-right {
+  right: auto !important;
+  left: 10px !important;
+}
