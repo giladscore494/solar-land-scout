@@ -5,22 +5,25 @@ import MapView from "./MapView";
 import Sidebar from "./Sidebar";
 import Legend from "./Legend";
 import type {
+  AnalysisRun,
+  AnalyzeStateResponse,
   CandidateSite,
+  Language,
   SiteFilters,
   StateMacro,
   StatesResponse,
   SitesResponse,
 } from "@/types/domain";
+import { directionForLanguage, normalizeLanguage, t } from "@/lib/i18n";
 
 const DEFAULT_FILTERS: SiteFilters = {
   strict_only: true,
 };
+const LANGUAGE_STORAGE_KEY = "solar-land-scout:language";
 
-/**
- * Top-level client component: owns data loading + selection state.
- * Renders the full-screen map on the left, persistent sidebar on the right.
- */
 export default function AppShell() {
+  const [language, setLanguage] = useState<Language>("en");
+
   const [states, setStates] = useState<StateMacro[]>([]);
   const [statesLoading, setStatesLoading] = useState(true);
   const [statesError, setStatesError] = useState<string | null>(null);
@@ -32,8 +35,22 @@ export default function AppShell() {
   const [filters, setFilters] = useState<SiteFilters>(DEFAULT_FILTERS);
   const [selectedStateCode, setSelectedStateCode] = useState<string | null>(null);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
+  const [latestRun, setLatestRun] = useState<AnalysisRun | null>(null);
+  const [analysisRunning, setAnalysisRunning] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [dbAvailable, setDbAvailable] = useState(false);
 
-  /* ---------------------------- initial states load --------------------------- */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setLanguage(normalizeLanguage(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)));
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.lang = language;
+    document.documentElement.dir = directionForLanguage(language);
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+  }, [language]);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,10 +61,11 @@ export default function AppShell() {
         const res = await fetch("/api/states", { cache: "no-store" });
         if (!res.ok) throw new Error(`status ${res.status}`);
         const data = (await res.json()) as StatesResponse;
-        if (!cancelled) setStates(data.states);
-      } catch (e) {
-        if (!cancelled)
-          setStatesError(e instanceof Error ? e.message : "load_failed");
+        if (cancelled) return;
+        setStates(data.states);
+        setDbAvailable(data.db_available);
+      } catch (error) {
+        if (!cancelled) setStatesError(error instanceof Error ? error.message : "load_failed");
       } finally {
         if (!cancelled) setStatesLoading(false);
       }
@@ -57,55 +75,49 @@ export default function AppShell() {
     };
   }, []);
 
-  /* ---------------------------- sites load (reactive) ------------------------- */
-
   const sitesQuery = useMemo(() => {
-    const p = new URLSearchParams();
-    if (selectedStateCode) p.set("state", selectedStateCode);
-    if (typeof filters.min_solar === "number")
-      p.set("min_solar", String(filters.min_solar));
-    if (typeof filters.max_slope === "number")
-      p.set("max_slope", String(filters.max_slope));
-    if (filters.max_land_cost_band) p.set("max_land_cost_band", filters.max_land_cost_band);
-    if (filters.strict_only === false) p.set("strict_only", "false");
-    return p.toString();
+    const params = new URLSearchParams();
+    if (selectedStateCode) params.set("state", selectedStateCode);
+    if (typeof filters.min_solar === "number") params.set("min_solar", String(filters.min_solar));
+    if (typeof filters.max_slope === "number") params.set("max_slope", String(filters.max_slope));
+    if (filters.max_land_cost_band) params.set("max_land_cost_band", filters.max_land_cost_band);
+    if (filters.strict_only === false) params.set("strict_only", "false");
+    return params.toString();
   }, [selectedStateCode, filters]);
 
-  useEffect(() => {
-    // Only fetch sites when a state is selected. On the full-USA view the map
-    // shows the state-level choropleth and no points, which is the intended UX.
+  const refreshSites = useCallback(async () => {
     if (!selectedStateCode) {
       setSites([]);
       setSitesError(null);
+      setLatestRun(null);
       return;
     }
-    let cancelled = false;
-    (async () => {
-      setSitesLoading(true);
-      setSitesError(null);
-      try {
-        const res = await fetch(`/api/sites?${sitesQuery}`, { cache: "no-store" });
-        if (!res.ok) throw new Error(`status ${res.status}`);
-        const data = (await res.json()) as SitesResponse;
-        if (!cancelled) setSites(data.sites);
-      } catch (e) {
-        if (!cancelled)
-          setSitesError(e instanceof Error ? e.message : "load_failed");
-      } finally {
-        if (!cancelled) setSitesLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [sitesQuery, selectedStateCode]);
 
-  /* ---------------------------------- Actions --------------------------------- */
+    setSitesLoading(true);
+    setSitesError(null);
+    try {
+      const res = await fetch(`/api/sites?${sitesQuery}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const data = (await res.json()) as SitesResponse;
+      setSites(data.sites);
+      setLatestRun(data.latest_analysis_run);
+      setDbAvailable(data.db_available);
+    } catch (error) {
+      setSitesError(error instanceof Error ? error.message : "load_failed");
+    } finally {
+      setSitesLoading(false);
+    }
+  }, [selectedStateCode, sitesQuery]);
+
+  useEffect(() => {
+    void refreshSites();
+  }, [refreshSites]);
 
   const handleSelectState = useCallback((code: string | null) => {
     setSelectedStateCode(code);
     setSelectedSiteId(null);
-    setFilters((f) => ({ ...f, state_code: code ?? undefined }));
+    setAnalysisError(null);
+    setFilters((current) => ({ ...current, state_code: code ?? undefined }));
   }, []);
 
   const handleSelectSite = useCallback((id: string | null) => {
@@ -115,34 +127,71 @@ export default function AppShell() {
   const handleClearState = useCallback(() => {
     setSelectedStateCode(null);
     setSelectedSiteId(null);
+    setLatestRun(null);
+    setSites([]);
+    setAnalysisError(null);
   }, []);
 
+  const handleRunAnalysis = useCallback(async () => {
+    if (!selectedStateCode) return;
+    setAnalysisRunning(true);
+    setAnalysisError(null);
+    setLatestRun((current) =>
+      current ?? {
+        id: -1,
+        state_code: selectedStateCode,
+        language,
+        status: "running",
+        started_at: new Date().toISOString(),
+        completed_at: null,
+        notes: null,
+        site_count: 0,
+      }
+    );
+
+    try {
+      const res = await fetch("/api/analyze-state", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ stateCode: selectedStateCode, language }),
+      });
+      const data = (await res.json()) as AnalyzeStateResponse;
+      setDbAvailable(data.db_available);
+      if (!res.ok || data.error) throw new Error(data.error ?? `status ${res.status}`);
+      setSites(data.sites);
+      setLatestRun(data.run);
+      setSelectedSiteId(data.sites.length === 1 ? data.sites[0].id : null);
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : "analysis_failed");
+      await refreshSites();
+    } finally {
+      setAnalysisRunning(false);
+    }
+  }, [language, refreshSites, selectedStateCode]);
+
   const selectedState = useMemo(
-    () => states.find((s) => s.state_code === selectedStateCode) ?? null,
+    () => states.find((state) => state.state_code === selectedStateCode) ?? null,
     [states, selectedStateCode]
   );
   const selectedSite = useMemo(
-    () => sites.find((s) => s.id === selectedSiteId) ?? null,
+    () => sites.find((site) => site.id === selectedSiteId) ?? null,
     [sites, selectedSiteId]
   );
 
-  /* ----------------------------------- UI ------------------------------------ */
-
   return (
-    <main className="relative h-dvh w-dvw overflow-hidden">
-      {/* Map fills everything; sidebar floats over it on desktop. */}
+    <main className="relative h-dvh w-dvw overflow-hidden" dir={directionForLanguage(language)}>
       <div className="absolute inset-0">
         <MapView
           states={states}
           sites={sites}
           selectedStateCode={selectedStateCode}
           selectedSiteId={selectedSiteId}
+          language={language}
           onSelectState={handleSelectState}
           onSelectSite={handleSelectSite}
         />
       </div>
 
-      {/* Top-left brand */}
       <header className="pointer-events-none absolute left-5 top-5 z-10 flex items-center gap-3">
         <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-line bg-bg-800/80 px-4 py-2 backdrop-blur-md">
           <div className="relative h-6 w-6">
@@ -151,21 +200,26 @@ export default function AppShell() {
           </div>
           <div className="leading-tight">
             <div className="text-[13px] font-semibold tracking-wide">Solar Land Scout</div>
-            <div className="text-[11px] text-ink-400">U.S. utility-scale site discovery · v1</div>
+            <div className="text-[11px] text-ink-400">{t(language, "app.subtitle")}</div>
           </div>
+          <button
+            onClick={() => setLanguage((current) => (current === "en" ? "he" : "en"))}
+            className="rounded-full border border-line bg-bg-700 px-3 py-1 text-[11px] font-medium text-ink-100 transition hover:border-accent-solar/40 hover:text-accent-solar"
+          >
+            {t(language, "language.toggle")}
+          </button>
         </div>
       </header>
 
-      {/* Legend bottom-left */}
       <div className="pointer-events-none absolute bottom-5 left-5 z-10">
         <div className="pointer-events-auto">
-          <Legend />
+          <Legend language={language} />
         </div>
       </div>
 
-      {/* Sidebar */}
-      <aside className="absolute right-0 top-0 z-20 h-full w-full max-w-[420px] border-l border-line bg-bg-900/90 backdrop-blur-xl">
+      <aside className="absolute right-0 top-0 z-20 h-full w-full max-w-[440px] border-l border-line bg-bg-900/90 backdrop-blur-xl">
         <Sidebar
+          language={language}
           states={states}
           statesLoading={statesLoading}
           statesError={statesError}
@@ -176,9 +230,14 @@ export default function AppShell() {
           setFilters={setFilters}
           selectedState={selectedState}
           selectedSite={selectedSite}
+          latestRun={latestRun}
+          analysisRunning={analysisRunning}
+          analysisError={analysisError}
+          dbAvailable={dbAvailable}
           onSelectState={handleSelectState}
           onSelectSite={handleSelectSite}
           onClearState={handleClearState}
+          onRunAnalysis={handleRunAnalysis}
         />
       </aside>
     </main>

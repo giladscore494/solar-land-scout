@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRepository } from "@/lib/repository";
 import { explainSite, explainState } from "@/lib/gemini";
+import { normalizeLanguage } from "@/lib/i18n";
 import type { ExplainResponse } from "@/types/domain";
 
 export const runtime = "nodejs";
@@ -8,8 +9,8 @@ export const dynamic = "force-dynamic";
 
 interface ExplainRequest {
   kind: "state" | "site";
-  /** State code when kind === "state"; site id when kind === "site". */
   id: string;
+  language?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -24,19 +25,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
 
+  const language = normalizeLanguage(body.language);
   const repo = getRepository();
   try {
     if (body.kind === "state") {
-      const s = await repo.getState(body.id);
-      if (!s) return NextResponse.json({ error: "not_found" }, { status: 404 });
-      const out: ExplainResponse = await explainState(s);
-      return NextResponse.json(out);
-    } else {
-      const site = await repo.getSite(body.id);
-      if (!site) return NextResponse.json({ error: "not_found" }, { status: 404 });
-      const out: ExplainResponse = await explainSite(site);
+      const state = await repo.getState(body.id);
+      if (!state) return NextResponse.json({ error: "not_found" }, { status: 404 });
+      const out: ExplainResponse = await explainState(state, language);
       return NextResponse.json(out);
     }
+
+    const site = await repo.getSite(body.id);
+    if (!site) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    const out: ExplainResponse = await explainSite(site, language);
+    return NextResponse.json(out);
   } catch {
     return NextResponse.json({ error: "explain_failed" }, { status: 500 });
   }
