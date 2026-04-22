@@ -16,7 +16,7 @@ export default function SiteDetail({
     <div>
       <button
         onClick={onBack}
-        className="mb-4 text-[11.5px] font-medium text-ink-300 transition hover:text-ink-50"
+        className="mb-4 inline-flex min-h-[36px] items-center gap-1.5 rounded-md border border-line/60 bg-bg-800/40 px-2.5 py-1 text-[12px] font-medium text-ink-200 transition hover:text-ink-50 active:scale-[0.98]"
       >
         ← back to {site.state_name}
       </button>

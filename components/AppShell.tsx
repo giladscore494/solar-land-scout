@@ -4,8 +4,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import MapView from "./MapView";
 import Sidebar from "./Sidebar";
 import Legend from "./Legend";
-import type { AnalysisRun, CandidateSite, SiteFilters, StateMacro, StatesResponse, SitesResponse } from "@/types/domain";
+import type {
+  AnalysisRun,
+  CandidateSite,
+  SiteFilters,
+  StateMacro,
+  StatesResponse,
+  SitesResponse,
+} from "@/types/domain";
 import type { Lang } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 
 const DEFAULT_FILTERS: SiteFilters = { strict_only: true };
 
@@ -16,17 +24,21 @@ export default function AppShell() {
   const [statesError, setStatesError] = useState<string | null>(null);
 
   const [sites, setSites] = useState<CandidateSite[]>([]);
+  const [allCandidates, setAllCandidates] = useState<CandidateSite[]>([]);
   const [sitesLoading, setSitesLoading] = useState(false);
   const [sitesError, setSitesError] = useState<string | null>(null);
 
   const [runs, setRuns] = useState<AnalysisRun[]>([]);
   const [runStatus, setRunStatus] = useState<"idle" | "running" | "complete" | "error">("idle");
   const [runError, setRunError] = useState<string | null>(null);
-  const [activeDebugJson, setActiveDebugJson] = useState<Record<string, unknown> | null>(null);
+  const [runDebug, setRunDebug] = useState<Record<string, unknown> | null>(null);
 
   const [filters, setFilters] = useState<SiteFilters>(DEFAULT_FILTERS);
   const [selectedStateCode, setSelectedStateCode] = useState<string | null>(null);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
+
+  // Mobile: panel open/closed. On large screens the panel is always visible.
+  const [panelOpen, setPanelOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,7 +56,9 @@ export default function AppShell() {
         if (!cancelled) setStatesLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const sitesQuery = useMemo(() => {
@@ -66,6 +80,7 @@ export default function AppShell() {
   useEffect(() => {
     if (!selectedStateCode) {
       setSites([]);
+      setAllCandidates([]);
       setRuns([]);
       return;
     }
@@ -80,14 +95,19 @@ export default function AppShell() {
         ]);
         if (!sitesRes.ok) throw new Error(`status ${sitesRes.status}`);
         const data = (await sitesRes.json()) as SitesResponse;
-        if (!cancelled) setSites(data.sites);
+        if (!cancelled) {
+          setSites(data.sites);
+          setAllCandidates(data.sites);
+        }
       } catch (e) {
         if (!cancelled) setSitesError(e instanceof Error ? e.message : "load_failed");
       } finally {
         if (!cancelled) setSitesLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [sitesQuery, selectedStateCode, refreshRuns]);
 
   const handleRunAnalysis = useCallback(async () => {
@@ -101,9 +121,14 @@ export default function AppShell() {
         body: JSON.stringify({ state_code: selectedStateCode, language }),
       });
       if (!res.ok) throw new Error(`status ${res.status}`);
-      const data = (await res.json()) as { sites: CandidateSite[] };
+      const data = (await res.json()) as {
+        sites: CandidateSite[];
+        all_candidates?: CandidateSite[];
+        run_debug?: Record<string, unknown> | null;
+      };
       setSites(data.sites ?? []);
-      setActiveDebugJson((data.sites?.[0]?.gemini_debug_json as Record<string, unknown>) ?? null);
+      setAllCandidates(data.all_candidates ?? data.sites ?? []);
+      setRunDebug(data.run_debug ?? null);
       setRunStatus("complete");
       await refreshRuns(selectedStateCode);
     } catch (e) {
@@ -117,15 +142,38 @@ export default function AppShell() {
     setSelectedSiteId(null);
     setRunStatus("idle");
     setRunError(null);
-    setActiveDebugJson(null);
+    setRunDebug(null);
+    setAllCandidates([]);
     setFilters((f) => ({ ...f, state_code: code ?? undefined }));
+    // On mobile, opening the panel after selection gives users immediate feedback.
+    setPanelOpen(true);
   }, []);
 
-  const selectedState = useMemo(() => states.find((s) => s.state_code === selectedStateCode) ?? null, [states, selectedStateCode]);
-  const selectedSite = useMemo(() => sites.find((s) => s.id === selectedSiteId) ?? null, [sites, selectedSiteId]);
+  const handleSelectSite = useCallback((id: string | null) => {
+    setSelectedSiteId(id);
+    if (id) setPanelOpen(true);
+  }, []);
+
+  const selectedState = useMemo(
+    () => states.find((s) => s.state_code === selectedStateCode) ?? null,
+    [states, selectedStateCode]
+  );
+  const selectedSite = useMemo(
+    () =>
+      sites.find((s) => s.id === selectedSiteId) ??
+      allCandidates.find((s) => s.id === selectedSiteId) ??
+      null,
+    [sites, allCandidates, selectedSiteId]
+  );
+
+  const isRtl = language === "he";
 
   return (
-    <main className="relative h-dvh w-dvw overflow-hidden" dir={language === "he" ? "rtl" : "ltr"}>
+    <main
+      className="relative h-dvh w-dvw overflow-hidden bg-bg-900"
+      dir={isRtl ? "rtl" : "ltr"}
+    >
+      {/* Full-bleed map */}
       <div className="absolute inset-0">
         <MapView
           states={states}
@@ -133,48 +181,104 @@ export default function AppShell() {
           selectedStateCode={selectedStateCode}
           selectedSiteId={selectedSiteId}
           onSelectState={handleSelectState}
-          onSelectSite={setSelectedSiteId}
+          onSelectSite={handleSelectSite}
         />
       </div>
 
-      <header className="pointer-events-none absolute left-5 top-5 z-10 flex items-center gap-3">
-        <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-line bg-bg-800/80 px-4 py-2 backdrop-blur-md">
+      {/* Header chip — keeps title + language. On mobile it's compact. */}
+      <header
+        className={
+          "pointer-events-none absolute top-3 z-30 flex items-center gap-2 sm:top-5 " +
+          (isRtl ? "right-3 sm:right-5" : "left-3 sm:left-5")
+        }
+      >
+        <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-line bg-bg-800/85 px-3 py-1.5 backdrop-blur-md sm:gap-3 sm:px-4 sm:py-2">
           <div className="leading-tight">
-            <div className="text-[13px] font-semibold tracking-wide">Solar Land Scout</div>
-            <div className="text-[11px] text-ink-400">Feasibility pre-screening</div>
+            <div className="text-[12px] font-semibold tracking-wide sm:text-[13px]">
+              Solar Land Scout
+            </div>
+            <div className="hidden text-[11px] text-ink-400 sm:block">
+              Feasibility pre-screening
+            </div>
           </div>
           <button
-            className="rounded border border-line px-2 py-1 text-[11px]"
+            type="button"
+            className="min-h-[34px] min-w-[34px] rounded-md border border-line px-2 py-1 text-[11px] font-medium active:scale-[0.97]"
             onClick={() => setLanguage((l) => (l === "en" ? "he" : "en"))}
+            aria-label="Toggle language"
           >
             {language === "en" ? "HE" : "EN"}
           </button>
         </div>
       </header>
 
-      <div className="pointer-events-none absolute bottom-5 left-5 z-10"><div className="pointer-events-auto"><Legend /></div></div>
+      {/* Mobile action button to open the panel */}
+      <button
+        type="button"
+        onClick={() => setPanelOpen(true)}
+        className={
+          "pointer-events-auto fixed bottom-[max(12px,env(safe-area-inset-bottom))] z-30 rounded-full border border-line bg-bg-800/90 px-4 py-2 text-[12px] font-semibold shadow-panel backdrop-blur-md active:scale-[0.98] lg:hidden " +
+          (isRtl ? "left-3" : "right-3")
+        }
+        aria-label={t(language, "showPanel")}
+      >
+        {selectedState
+          ? selectedSite
+            ? selectedSite.title.slice(0, 22)
+            : selectedState.state_name
+          : t(language, "usaOverview")}
+      </button>
 
-      <aside className="absolute right-0 top-0 z-20 h-full w-full max-w-[430px] border-l border-line bg-bg-900/90 backdrop-blur-xl">
+      {/* Legend — hidden on very small screens to keep the map breathable */}
+      <div
+        className={
+          "pointer-events-none absolute bottom-[max(12px,env(safe-area-inset-bottom))] z-20 hidden sm:block " +
+          (isRtl ? "right-3 sm:right-5" : "left-3 sm:left-5")
+        }
+      >
+        <div className="pointer-events-auto">
+          <Legend />
+        </div>
+      </div>
+
+      {/* Panel: desktop side drawer, mobile bottom sheet */}
+      <aside
+        className={[
+          "fixed z-40 border-line bg-bg-900/95 backdrop-blur-xl transition-transform duration-300 ease-out",
+          // Mobile: bottom sheet
+          "inset-x-0 bottom-0 h-[min(88vh,760px)] rounded-t-2xl border-t",
+          panelOpen ? "translate-y-0" : "translate-y-full",
+          // Desktop: right (or left, when RTL) side drawer
+          "lg:inset-auto lg:top-0 lg:h-full lg:w-[min(430px,36vw)] lg:rounded-none lg:border-t-0 lg:!translate-y-0",
+          isRtl
+            ? "lg:left-0 lg:border-r lg:border-l-0"
+            : "lg:right-0 lg:border-l",
+        ].join(" ")}
+        role="dialog"
+        aria-modal="false"
+      >
         <Sidebar
           language={language}
           states={states}
           statesLoading={statesLoading}
           statesError={statesError}
           sites={sites}
+          allCandidates={allCandidates}
           sitesLoading={sitesLoading}
           sitesError={sitesError}
           runs={runs}
           runStatus={runStatus}
           runError={runError}
           onRunAnalysis={handleRunAnalysis}
-          debugJson={activeDebugJson}
+          runDebug={runDebug}
           filters={filters}
           setFilters={setFilters}
           selectedState={selectedState}
           selectedSite={selectedSite}
           onSelectState={handleSelectState}
-          onSelectSite={setSelectedSiteId}
+          onSelectSite={handleSelectSite}
           onClearState={() => handleSelectState(null)}
+          onRequestClose={() => setPanelOpen(false)}
         />
       </aside>
     </main>

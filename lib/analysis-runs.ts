@@ -132,6 +132,50 @@ export async function getRunDebug(runId: number) {
   const pool = getPostgresPool();
   if (!pool) return null;
   await ensureSchema(pool);
-  const result = await pool.query(`SELECT gemini_debug_json FROM analysis_runs WHERE id=$1 LIMIT 1`, [runId]);
-  return result.rows[0]?.gemini_debug_json ?? null;
+  const result = await pool.query(
+    `SELECT gemini_debug_json, state_code, status, started_at, completed_at, notes FROM analysis_runs WHERE id=$1 LIMIT 1`,
+    [runId]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  const sites = await pool.query(
+    `SELECT id, title, state_code, passes_strict_filters, feasibility_score, overall_site_score,
+            land_cost_completion_source, grid_completion_source,
+            land_cost_completion_confidence, grid_completion_confidence,
+            gemini_debug_json
+       FROM candidate_sites
+      WHERE run_id=$1
+      ORDER BY feasibility_score DESC NULLS LAST, overall_site_score DESC`,
+    [runId]
+  );
+  return {
+    run: {
+      id: runId,
+      state_code: row.state_code,
+      status: row.status,
+      started_at: row.started_at,
+      completed_at: row.completed_at,
+      notes: row.notes,
+    },
+    run_debug: row.gemini_debug_json ?? null,
+    sites: sites.rows.map((s) => ({
+      id: s.id,
+      title: s.title,
+      state_code: s.state_code,
+      passes_strict_filters: Boolean(s.passes_strict_filters),
+      feasibility_score: s.feasibility_score !== null ? Number(s.feasibility_score) : null,
+      overall_site_score: s.overall_site_score !== null ? Number(s.overall_site_score) : null,
+      land_cost_completion_source: s.land_cost_completion_source ?? null,
+      grid_completion_source: s.grid_completion_source ?? null,
+      land_cost_completion_confidence:
+        s.land_cost_completion_confidence !== null
+          ? Number(s.land_cost_completion_confidence)
+          : null,
+      grid_completion_confidence:
+        s.grid_completion_confidence !== null
+          ? Number(s.grid_completion_confidence)
+          : null,
+      gemini_debug_json: s.gemini_debug_json ?? null,
+    })),
+  };
 }

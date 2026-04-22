@@ -169,10 +169,53 @@ export async function runStateAnalysis(state: StateMacro, language: "en" | "he" 
     candidates.push(site);
   }
 
+  const passing = candidates.filter((c) => c.passes_strict_filters);
+
+  // Build a run-level debug summary that is honest about what was attempted
+  // and what was actually used across ALL generated candidates.
+  const debugs = candidates
+    .map((c) => c.gemini_debug_json as Record<string, unknown> | undefined)
+    .filter((d): d is Record<string, unknown> => !!d);
+
+  const groundingAttempted = debugs.filter((d) => d.attempted_grounding === true).length;
+  const groundingUsed = debugs.filter((d) => d.grounding_used === true).length;
+  const mapsAttempted = debugs.filter((d) => d.attempted_maps_context === true).length;
+  const mapsUsed = debugs.filter((d) => d.maps_context_used === true).length;
+
+  const runDebug = {
+    state_code: state.state_code,
+    state_name: state.state_name,
+    language,
+    total_generated: candidates.length,
+    total_passing_strict: passing.length,
+    gemini_model: debugs[0]?.model ?? null,
+    gemini_timeout_ms: debugs[0]?.timeout_ms ?? null,
+    grounding_attempts: groundingAttempted,
+    grounding_uses: groundingUsed,
+    maps_context_attempts: mapsAttempted,
+    maps_context_uses: mapsUsed,
+    per_site_summary: candidates.map((c) => ({
+      site_id: c.id,
+      title: c.title,
+      passes_strict_filters: c.passes_strict_filters,
+      feasibility_score: c.feasibility_score,
+      attempted_grounding:
+        (c.gemini_debug_json as Record<string, unknown> | null | undefined)
+          ?.attempted_grounding ?? null,
+      grounding_used:
+        (c.gemini_debug_json as Record<string, unknown> | null | undefined)
+          ?.grounding_used ?? null,
+      grounding_failure_reason:
+        (c.gemini_debug_json as Record<string, unknown> | null | undefined)
+          ?.grounding_failure_reason ?? null,
+    })),
+  };
+
   return {
     state_code: state.state_code,
     total_generated: candidates.length,
     candidates,
-    passing: candidates.filter((c) => c.passes_strict_filters),
+    passing,
+    run_debug: runDebug,
   };
 }

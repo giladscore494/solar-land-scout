@@ -5,5 +5,22 @@
   "noResults": "No feasible candidates passed strict filters.",
   "debugJson": "Debug JSON",
   "stateIntelligence": "State intelligence",
-  "usaOverview": "USA macro overview"
+  "usaOverview": "USA macro overview",
+  "candidateSites": "Candidate sites",
+  "back": "Back",
+  "filters": "Filters",
+  "selectState": "— All U.S. states —",
+  "maxLandCost": "Max land-cost band",
+  "stateLabel": "State",
+  "runDebug": "Run debug",
+  "perSiteDebug": "Per-site debug",
+  "noPassingHint": "No sites passed strict filters. Debug data below still reflects what Gemini actually attempted.",
+  "showMap": "Show map",
+  "showPanel": "Show panel",
+  "close": "Close",
+  "grounding": "grounding",
+  "groundingUsed": "search used",
+  "groundingAttempted": "search attempted",
+  "groundingFailed": "search not available",
+  "mapsUnavailable": "maps context unavailable"
 }
