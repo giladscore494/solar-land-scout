@@ -1,30 +1,10 @@
 /**
- * Core domain types for Solar Land Scout v1.
- * These shapes are the contract between data/seeds, scoring engine,
- * API routes, and the UI. Keep them stable — changes ripple everywhere.
+ * Core domain types shared across the deterministic engine, repositories,
+ * API routes, and the UI.
  */
 
-/** 2-letter USPS state code. */
 export type StateCode = string;
-
-/**
- * Macro-level ranking for a U.S. state. All score fields are 0–100.
- * Seed values may be manually curated in v1 and progressively replaced
- * by live sources (e.g. NREL solar, EIA electricity price) later.
- */
-export interface StateMacro {
-  state_code: StateCode;
-  state_name: string;
-  average_solar_potential_score: number;
-  electricity_price_score: number;
-  land_cost_score: number;
-  open_land_availability_score: number;
-  development_friendliness_score: number;
-  /** Computed from the five factors using weights in lib/scoring-config.ts. */
-  macro_total_score: number;
-  macro_summary_seed: string;
-  recommended_label: RecommendedLabel;
-}
+export type Language = "en" | "he";
 
 export type RecommendedLabel =
   | "Tier 1 — Strong"
@@ -32,39 +12,65 @@ export type RecommendedLabel =
   | "Tier 3 — Moderate"
   | "Tier 4 — Marginal";
 
-/** Qualitative bands used where precise $/acre data is not yet wired up. */
 export type LandCostBand = "low" | "moderate" | "elevated" | "high";
-
-/** Qualitative infrastructure proximity estimate (transmission / substations). */
 export type InfraProximity = "near" | "moderate" | "far";
+export type AnalysisRunStatus = "queued" | "running" | "completed" | "failed";
+export type SiteDataSource = "database" | "seed";
 
-/**
- * A pre-filtered candidate site. Only sites that pass the strict v1 filters
- * are exposed to the map UI. No "maybe" points are shown.
- */
+export interface StateMacro {
+  id?: number;
+  state_code: StateCode;
+  state_name_en: string;
+  state_name_he: string;
+  average_solar_potential_score: number;
+  electricity_price_score: number;
+  land_cost_score: number;
+  open_land_availability_score: number;
+  development_friendliness_score: number;
+  macro_total_score: number;
+  macro_summary_en: string;
+  macro_summary_he: string;
+  recommended_label: RecommendedLabel;
+  updated_at?: string;
+}
+
+export interface AnalysisRun {
+  id: number;
+  state_code: StateCode;
+  language: Language;
+  status: AnalysisRunStatus;
+  started_at: string;
+  completed_at: string | null;
+  notes: string | null;
+  site_count: number;
+}
+
 export interface CandidateSite {
   id: string;
+  run_id: number | null;
   state_code: StateCode;
-  state_name: string;
+  state_name_en: string;
+  state_name_he: string;
   lat: number;
   lng: number;
   title: string;
-  /** NREL-style GHI (kWh/m²/day). Higher is better. */
   solar_resource_value: number;
   estimated_land_cost_band: LandCostBand;
-  /** Qualitative placeholder until parcel-grade data lands. */
   distance_to_infra_estimate: InfraProximity;
-  /** Percent slope estimate. Lower is better for utility-scale PV. */
   slope_estimate: number;
-  open_land_score: number; // 0-100
+  open_land_score: number;
   passes_strict_filters: boolean;
-  qualification_reasons: string[];
-  caution_notes: string[];
-  gemini_summary_seed: string;
-  overall_site_score: number; // 0-100
+  qualification_reasons_en: string[];
+  qualification_reasons_he: string[];
+  caution_notes_en: string[];
+  caution_notes_he: string[];
+  gemini_summary_en: string;
+  gemini_summary_he: string;
+  overall_site_score: number;
+  created_at?: string;
+  data_source: SiteDataSource;
 }
 
-/** User-facing filter values controlled from the sidebar. */
 export interface SiteFilters {
   state_code?: StateCode;
   min_macro_score?: number;
@@ -74,26 +80,39 @@ export interface SiteFilters {
   strict_only?: boolean;
 }
 
-/** Return shape of GET /api/states. */
 export interface StatesResponse {
   states: StateMacro[];
   generated_at: string;
+  db_available: boolean;
 }
 
-/** Return shape of GET /api/sites. */
 export interface SitesResponse {
   sites: CandidateSite[];
   total_before_filters: number;
   total_after_filters: number;
   generated_at: string;
+  db_available: boolean;
+  latest_analysis_run: AnalysisRun | null;
 }
 
-/** Return shape of POST /api/explain. */
 export interface ExplainResponse {
   kind: "state" | "site";
   summary: string;
   bullets: string[];
   risks: string[];
-  /** true when the explanation came from the Gemini API, false = local fallback. */
   from_llm: boolean;
+}
+
+export interface AnalysisRunsResponse {
+  runs: AnalysisRun[];
+  latest_run: AnalysisRun | null;
+  db_available: boolean;
+}
+
+export interface AnalyzeStateResponse {
+  run: AnalysisRun | null;
+  sites: CandidateSite[];
+  generated_at: string;
+  db_available: boolean;
+  error?: string;
 }
