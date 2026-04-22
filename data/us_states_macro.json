@@ -1,0 +1,502 @@
+[
+  {
+    "state_code": "AZ",
+    "state_name": "Arizona",
+    "average_solar_potential_score": 98,
+    "electricity_price_score": 72,
+    "land_cost_score": 85,
+    "open_land_availability_score": 92,
+    "development_friendliness_score": 82,
+    "macro_summary_seed": "Arizona combines some of the highest direct solar irradiance in the continental U.S. with large tracts of low-cost, low-slope open land and a mature utility-scale permitting track record."
+  },
+  {
+    "state_code": "NM",
+    "state_name": "New Mexico",
+    "average_solar_potential_score": 96,
+    "electricity_price_score": 68,
+    "land_cost_score": 88,
+    "open_land_availability_score": 90,
+    "development_friendliness_score": 76,
+    "macro_summary_seed": "New Mexico offers excellent solar resource, low land costs, and large open plateaus, balanced by a smaller interconnection queue relative to neighboring states."
+  },
+  {
+    "state_code": "NV",
+    "state_name": "Nevada",
+    "average_solar_potential_score": 97,
+    "electricity_price_score": 70,
+    "land_cost_score": 82,
+    "open_land_availability_score": 88,
+    "development_friendliness_score": 78,
+    "macro_summary_seed": "Nevada has best-in-class solar irradiance and abundant federal land near major transmission corridors; BLM permitting pathways are well-trodden."
+  },
+  {
+    "state_code": "TX",
+    "state_name": "Texas",
+    "average_solar_potential_score": 90,
+    "electricity_price_score": 80,
+    "land_cost_score": 78,
+    "open_land_availability_score": 86,
+    "development_friendliness_score": 84,
+    "macro_summary_seed": "Texas pairs strong solar resource in the west with ERCOT's permissive interconnection process, producing the fastest project throughput in the U.S."
+  },
+  {
+    "state_code": "CA",
+    "state_name": "California",
+    "average_solar_potential_score": 92,
+    "electricity_price_score": 88,
+    "land_cost_score": 35,
+    "open_land_availability_score": 55,
+    "development_friendliness_score": 60,
+    "macro_summary_seed": "California has excellent resource and the nation's highest electricity prices, offset by expensive land, complex CEQA review, and constrained interconnection queues."
+  },
+  {
+    "state_code": "UT",
+    "state_name": "Utah",
+    "average_solar_potential_score": 88,
+    "electricity_price_score": 58,
+    "land_cost_score": 80,
+    "open_land_availability_score": 84,
+    "development_friendliness_score": 72,
+    "macro_summary_seed": "Utah provides strong southwestern solar resource and large tracts of low-cost land, though transmission buildout can lag."
+  },
+  {
+    "state_code": "CO",
+    "state_name": "Colorado",
+    "average_solar_potential_score": 84,
+    "electricity_price_score": 62,
+    "land_cost_score": 70,
+    "open_land_availability_score": 78,
+    "development_friendliness_score": 75,
+    "macro_summary_seed": "Colorado's eastern plains offer competitive solar resource with open, low-slope land and supportive state policy."
+  },
+  {
+    "state_code": "OK",
+    "state_name": "Oklahoma",
+    "average_solar_potential_score": 78,
+    "electricity_price_score": 55,
+    "land_cost_score": 82,
+    "open_land_availability_score": 84,
+    "development_friendliness_score": 70,
+    "macro_summary_seed": "Oklahoma delivers good mid-South solar with very accessible land and a track record of large-scale renewables development."
+  },
+  {
+    "state_code": "KS",
+    "state_name": "Kansas",
+    "average_solar_potential_score": 76,
+    "electricity_price_score": 56,
+    "land_cost_score": 80,
+    "open_land_availability_score": 86,
+    "development_friendliness_score": 68,
+    "macro_summary_seed": "Kansas offers flat, cheap, open land and respectable irradiance, though its utility landscape is more conservative than neighboring states."
+  },
+  {
+    "state_code": "FL",
+    "state_name": "Florida",
+    "average_solar_potential_score": 82,
+    "electricity_price_score": 66,
+    "land_cost_score": 55,
+    "open_land_availability_score": 58,
+    "development_friendliness_score": 72,
+    "macro_summary_seed": "Florida's strong utility-scale pipeline and resource are tempered by competitive land prices and wetland-heavy geography."
+  },
+  {
+    "state_code": "GA",
+    "state_name": "Georgia",
+    "average_solar_potential_score": 78,
+    "electricity_price_score": 60,
+    "land_cost_score": 68,
+    "open_land_availability_score": 62,
+    "development_friendliness_score": 70,
+    "macro_summary_seed": "Georgia has become a surprising utility-scale leader thanks to supportive PPAs and a growing data-center load base."
+  },
+  {
+    "state_code": "NC",
+    "state_name": "North Carolina",
+    "average_solar_potential_score": 74,
+    "electricity_price_score": 58,
+    "land_cost_score": 60,
+    "open_land_availability_score": 55,
+    "development_friendliness_score": 68,
+    "macro_summary_seed": "North Carolina maintains strong incumbent solar capacity; queue saturation and land pressure now constrain new builds."
+  },
+  {
+    "state_code": "AL",
+    "state_name": "Alabama",
+    "average_solar_potential_score": 74,
+    "electricity_price_score": 55,
+    "land_cost_score": 72,
+    "open_land_availability_score": 65,
+    "development_friendliness_score": 58,
+    "macro_summary_seed": "Alabama has improving solar economics but a historically slower permitting environment."
+  },
+  {
+    "state_code": "MS",
+    "state_name": "Mississippi",
+    "average_solar_potential_score": 74,
+    "electricity_price_score": 54,
+    "land_cost_score": 78,
+    "open_land_availability_score": 70,
+    "development_friendliness_score": 55,
+    "macro_summary_seed": "Mississippi offers inexpensive land and reasonable resource; interconnection and off-take are the key constraints."
+  },
+  {
+    "state_code": "LA",
+    "state_name": "Louisiana",
+    "average_solar_potential_score": 72,
+    "electricity_price_score": 52,
+    "land_cost_score": 68,
+    "open_land_availability_score": 55,
+    "development_friendliness_score": 55,
+    "macro_summary_seed": "Louisiana has moderate resource; hurricane wind-load and wetland constraints narrow viable parcels."
+  },
+  {
+    "state_code": "AR",
+    "state_name": "Arkansas",
+    "average_solar_potential_score": 72,
+    "electricity_price_score": 55,
+    "land_cost_score": 78,
+    "open_land_availability_score": 72,
+    "development_friendliness_score": 62,
+    "macro_summary_seed": "Arkansas pairs cheap land with improving utility PPAs and a growing C&I solar market."
+  },
+  {
+    "state_code": "MO",
+    "state_name": "Missouri",
+    "average_solar_potential_score": 68,
+    "electricity_price_score": 54,
+    "land_cost_score": 72,
+    "open_land_availability_score": 72,
+    "development_friendliness_score": 60,
+    "macro_summary_seed": "Missouri has decent mid-continent resource and open farmland with moderate policy tailwinds."
+  },
+  {
+    "state_code": "IL",
+    "state_name": "Illinois",
+    "average_solar_potential_score": 64,
+    "electricity_price_score": 62,
+    "land_cost_score": 58,
+    "open_land_availability_score": 70,
+    "development_friendliness_score": 75,
+    "macro_summary_seed": "Illinois has aggressive state-level policy support offsetting modest irradiance."
+  },
+  {
+    "state_code": "IN",
+    "state_name": "Indiana",
+    "average_solar_potential_score": 62,
+    "electricity_price_score": 58,
+    "land_cost_score": 62,
+    "open_land_availability_score": 68,
+    "development_friendliness_score": 60,
+    "macro_summary_seed": "Indiana is emerging for utility solar thanks to MISO interconnection and data-center demand."
+  },
+  {
+    "state_code": "OH",
+    "state_name": "Ohio",
+    "average_solar_potential_score": 60,
+    "electricity_price_score": 58,
+    "land_cost_score": 58,
+    "open_land_availability_score": 62,
+    "development_friendliness_score": 55,
+    "macro_summary_seed": "Ohio has a strong PJM market but a contested local siting environment."
+  },
+  {
+    "state_code": "KY",
+    "state_name": "Kentucky",
+    "average_solar_potential_score": 64,
+    "electricity_price_score": 50,
+    "land_cost_score": 70,
+    "open_land_availability_score": 62,
+    "development_friendliness_score": 52,
+    "macro_summary_seed": "Kentucky has low land costs and modest resource; coal-legacy utility structure slows solar adoption."
+  },
+  {
+    "state_code": "TN",
+    "state_name": "Tennessee",
+    "average_solar_potential_score": 68,
+    "electricity_price_score": 52,
+    "land_cost_score": 65,
+    "open_land_availability_score": 58,
+    "development_friendliness_score": 55,
+    "macro_summary_seed": "Tennessee's TVA service territory is gradually scaling up solar procurements."
+  },
+  {
+    "state_code": "VA",
+    "state_name": "Virginia",
+    "average_solar_potential_score": 70,
+    "electricity_price_score": 60,
+    "land_cost_score": 55,
+    "open_land_availability_score": 55,
+    "development_friendliness_score": 70,
+    "macro_summary_seed": "Virginia's data-center load is driving strong utility-scale solar PPAs despite land pressure."
+  },
+  {
+    "state_code": "SC",
+    "state_name": "South Carolina",
+    "average_solar_potential_score": 72,
+    "electricity_price_score": 56,
+    "land_cost_score": 65,
+    "open_land_availability_score": 58,
+    "development_friendliness_score": 62,
+    "macro_summary_seed": "South Carolina offers reasonable resource and active utility procurement programs."
+  },
+  {
+    "state_code": "WV",
+    "state_name": "West Virginia",
+    "average_solar_potential_score": 58,
+    "electricity_price_score": 52,
+    "land_cost_score": 62,
+    "open_land_availability_score": 45,
+    "development_friendliness_score": 45,
+    "macro_summary_seed": "West Virginia's mountainous terrain limits the pool of low-slope parcels suitable for utility PV."
+  },
+  {
+    "state_code": "PA",
+    "state_name": "Pennsylvania",
+    "average_solar_potential_score": 58,
+    "electricity_price_score": 60,
+    "land_cost_score": 58,
+    "open_land_availability_score": 55,
+    "development_friendliness_score": 58,
+    "macro_summary_seed": "Pennsylvania's PJM market is attractive but solar resource is modest and terrain complex."
+  },
+  {
+    "state_code": "NY",
+    "state_name": "New York",
+    "average_solar_potential_score": 55,
+    "electricity_price_score": 78,
+    "land_cost_score": 48,
+    "open_land_availability_score": 50,
+    "development_friendliness_score": 72,
+    "macro_summary_seed": "New York has strong policy and premium wholesale prices, partly offset by high land costs and lower irradiance."
+  },
+  {
+    "state_code": "NJ",
+    "state_name": "New Jersey",
+    "average_solar_potential_score": 58,
+    "electricity_price_score": 78,
+    "land_cost_score": 30,
+    "open_land_availability_score": 35,
+    "development_friendliness_score": 72,
+    "macro_summary_seed": "New Jersey has an aggressive SREC market but very limited utility-scale parcels."
+  },
+  {
+    "state_code": "MA",
+    "state_name": "Massachusetts",
+    "average_solar_potential_score": 58,
+    "electricity_price_score": 82,
+    "land_cost_score": 32,
+    "open_land_availability_score": 32,
+    "development_friendliness_score": 68,
+    "macro_summary_seed": "Massachusetts is attractive for DG solar but land-constrained for utility-scale."
+  },
+  {
+    "state_code": "CT",
+    "state_name": "Connecticut",
+    "average_solar_potential_score": 56,
+    "electricity_price_score": 82,
+    "land_cost_score": 32,
+    "open_land_availability_score": 32,
+    "development_friendliness_score": 60,
+    "macro_summary_seed": "Connecticut pairs premium electricity prices with tight land availability."
+  },
+  {
+    "state_code": "RI",
+    "state_name": "Rhode Island",
+    "average_solar_potential_score": 56,
+    "electricity_price_score": 82,
+    "land_cost_score": 30,
+    "open_land_availability_score": 28,
+    "development_friendliness_score": 58,
+    "macro_summary_seed": "Rhode Island has premium prices but extremely limited land inventory."
+  },
+  {
+    "state_code": "NH",
+    "state_name": "New Hampshire",
+    "average_solar_potential_score": 56,
+    "electricity_price_score": 74,
+    "land_cost_score": 45,
+    "open_land_availability_score": 38,
+    "development_friendliness_score": 55,
+    "macro_summary_seed": "New Hampshire's forested terrain constrains utility-scale siting options."
+  },
+  {
+    "state_code": "VT",
+    "state_name": "Vermont",
+    "average_solar_potential_score": 54,
+    "electricity_price_score": 70,
+    "land_cost_score": 45,
+    "open_land_availability_score": 40,
+    "development_friendliness_score": 65,
+    "macro_summary_seed": "Vermont's small grid and mountainous terrain limit utility-scale development."
+  },
+  {
+    "state_code": "ME",
+    "state_name": "Maine",
+    "average_solar_potential_score": 55,
+    "electricity_price_score": 70,
+    "land_cost_score": 55,
+    "open_land_availability_score": 55,
+    "development_friendliness_score": 62,
+    "macro_summary_seed": "Maine's forested landscape offers pockets of opportunity where interconnection exists."
+  },
+  {
+    "state_code": "MD",
+    "state_name": "Maryland",
+    "average_solar_potential_score": 62,
+    "electricity_price_score": 68,
+    "land_cost_score": 42,
+    "open_land_availability_score": 42,
+    "development_friendliness_score": 68,
+    "macro_summary_seed": "Maryland has supportive policy and PJM pricing, but land is tight and contested."
+  },
+  {
+    "state_code": "DE",
+    "state_name": "Delaware",
+    "average_solar_potential_score": 62,
+    "electricity_price_score": 70,
+    "land_cost_score": 48,
+    "open_land_availability_score": 42,
+    "development_friendliness_score": 62,
+    "macro_summary_seed": "Delaware has premium PJM pricing but small total parcel inventory."
+  },
+  {
+    "state_code": "MI",
+    "state_name": "Michigan",
+    "average_solar_potential_score": 56,
+    "electricity_price_score": 60,
+    "land_cost_score": 60,
+    "open_land_availability_score": 62,
+    "development_friendliness_score": 62,
+    "macro_summary_seed": "Michigan's policy push and MISO market create a growing utility-scale pipeline."
+  },
+  {
+    "state_code": "WI",
+    "state_name": "Wisconsin",
+    "average_solar_potential_score": 58,
+    "electricity_price_score": 58,
+    "land_cost_score": 60,
+    "open_land_availability_score": 62,
+    "development_friendliness_score": 58,
+    "macro_summary_seed": "Wisconsin has modest irradiance but improving utility procurement."
+  },
+  {
+    "state_code": "MN",
+    "state_name": "Minnesota",
+    "average_solar_potential_score": 58,
+    "electricity_price_score": 58,
+    "land_cost_score": 58,
+    "open_land_availability_score": 65,
+    "development_friendliness_score": 68,
+    "macro_summary_seed": "Minnesota balances cool-climate efficiency gains with short winter days."
+  },
+  {
+    "state_code": "IA",
+    "state_name": "Iowa",
+    "average_solar_potential_score": 62,
+    "electricity_price_score": 55,
+    "land_cost_score": 58,
+    "open_land_availability_score": 70,
+    "development_friendliness_score": 62,
+    "macro_summary_seed": "Iowa's farmland and MISO footprint host growing utility-scale solar."
+  },
+  {
+    "state_code": "NE",
+    "state_name": "Nebraska",
+    "average_solar_potential_score": 68,
+    "electricity_price_score": 52,
+    "land_cost_score": 70,
+    "open_land_availability_score": 80,
+    "development_friendliness_score": 58,
+    "macro_summary_seed": "Nebraska offers flat, cheap land; public-power utility structure shapes the market."
+  },
+  {
+    "state_code": "SD",
+    "state_name": "South Dakota",
+    "average_solar_potential_score": 68,
+    "electricity_price_score": 52,
+    "land_cost_score": 72,
+    "open_land_availability_score": 82,
+    "development_friendliness_score": 55,
+    "macro_summary_seed": "South Dakota has excellent open land; transmission buildout is the binding constraint."
+  },
+  {
+    "state_code": "ND",
+    "state_name": "North Dakota",
+    "average_solar_potential_score": 60,
+    "electricity_price_score": 50,
+    "land_cost_score": 72,
+    "open_land_availability_score": 82,
+    "development_friendliness_score": 52,
+    "macro_summary_seed": "North Dakota's winter solar window is short; wind remains the dominant renewable."
+  },
+  {
+    "state_code": "MT",
+    "state_name": "Montana",
+    "average_solar_potential_score": 62,
+    "electricity_price_score": 55,
+    "land_cost_score": 72,
+    "open_land_availability_score": 82,
+    "development_friendliness_score": 55,
+    "macro_summary_seed": "Montana combines open land with constrained transmission to growing load centers."
+  },
+  {
+    "state_code": "WY",
+    "state_name": "Wyoming",
+    "average_solar_potential_score": 72,
+    "electricity_price_score": 50,
+    "land_cost_score": 78,
+    "open_land_availability_score": 86,
+    "development_friendliness_score": 52,
+    "macro_summary_seed": "Wyoming has strong resource and abundant federal land; policy remains coal-centric."
+  },
+  {
+    "state_code": "ID",
+    "state_name": "Idaho",
+    "average_solar_potential_score": 74,
+    "electricity_price_score": 55,
+    "land_cost_score": 65,
+    "open_land_availability_score": 70,
+    "development_friendliness_score": 58,
+    "macro_summary_seed": "Idaho has improving resource and steady demand growth from the Mountain West."
+  },
+  {
+    "state_code": "OR",
+    "state_name": "Oregon",
+    "average_solar_potential_score": 68,
+    "electricity_price_score": 62,
+    "land_cost_score": 55,
+    "open_land_availability_score": 58,
+    "development_friendliness_score": 70,
+    "macro_summary_seed": "Oregon's east-of-Cascades high desert hosts productive solar with supportive policy."
+  },
+  {
+    "state_code": "WA",
+    "state_name": "Washington",
+    "average_solar_potential_score": 62,
+    "electricity_price_score": 54,
+    "land_cost_score": 52,
+    "open_land_availability_score": 52,
+    "development_friendliness_score": 68,
+    "macro_summary_seed": "Washington's eastern plateau has decent resource; hydro-dominant grid caps PPA prices."
+  },
+  {
+    "state_code": "AK",
+    "state_name": "Alaska",
+    "average_solar_potential_score": 30,
+    "electricity_price_score": 80,
+    "land_cost_score": 60,
+    "open_land_availability_score": 60,
+    "development_friendliness_score": 40,
+    "macro_summary_seed": "Alaska's high latitude and long winters make it unsuitable for utility-scale PV today."
+  },
+  {
+    "state_code": "HI",
+    "state_name": "Hawaii",
+    "average_solar_potential_score": 88,
+    "electricity_price_score": 100,
+    "land_cost_score": 20,
+    "open_land_availability_score": 28,
+    "development_friendliness_score": 65,
+    "macro_summary_seed": "Hawaii has premium prices and strong resource but severely constrained land."
+  }
+]

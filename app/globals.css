@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* MapLibre base styles — imported from the package to avoid copying large CSS. */
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+  background: #070a10;
+  color: #eef2f8;
+  font-feature-settings: "ss01", "cv01";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Premium scrollbar treatment inside panels. */
+.scroll-panel::-webkit-scrollbar {
+  width: 8px;
+}
+.scroll-panel::-webkit-scrollbar-thumb {
+  background: #1f2a3d;
+  border-radius: 999px;
+}
+.scroll-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Subtle grid texture behind the map for depth. */
+.map-grid-bg {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+/* Tailwind v3-safe maplibre popup overrides — dark, minimal. */
+.maplibregl-popup-content {
+  background: #101826 !important;
+  color: #eef2f8 !important;
+  border: 1px solid #1f2a3d !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.6) !important;
+  padding: 12px 14px !important;
+  font-size: 12.5px !important;
+}
+.maplibregl-popup-tip {
+  border-top-color: #101826 !important;
+  border-bottom-color: #101826 !important;
+}
+.maplibregl-ctrl-group {
+  background: #101826 !important;
+  border: 1px solid #1f2a3d !important;
+}
+.maplibregl-ctrl-group button {
+  background-color: transparent !important;
+  filter: invert(0.9) hue-rotate(180deg);
+}

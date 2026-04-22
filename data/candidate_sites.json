@@ -1,0 +1,229 @@
+[
+  {
+    "id": "az-yuma-01",
+    "state_code": "AZ",
+    "state_name": "Arizona",
+    "lat": 32.8550,
+    "lng": -114.2590,
+    "title": "Yuma Mesa — South Desert Plateau",
+    "solar_resource_value": 6.8,
+    "estimated_land_cost_band": "low",
+    "distance_to_infra_estimate": "near",
+    "slope_estimate": 1.5,
+    "open_land_score": 92,
+    "passes_strict_filters": true,
+    "qualification_reasons": [
+      "Top-tier direct normal irradiance with minimal cloud cover",
+      "Flat desert plateau with <2% slope",
+      "Large contiguous BLM / state-trust parcels available",
+      "Proximate to existing 230kV transmission corridor"
+    ],
+    "caution_notes": [
+      "Desert tortoise habitat overlay requires environmental review",
+      "Summer dust storms and soiling affect O&M assumptions",
+      "Confirm water rights for panel washing and construction"
+    ],
+    "gemini_summary_seed": "The Yuma Mesa site is a textbook utility-scale desert candidate: high irradiance, near-zero slope, cheap land, and an existing high-voltage corridor within reach.",
+    "overall_site_score": 94
+  },
+  {
+    "id": "az-gila-bend-01",
+    "state_code": "AZ",
+    "state_name": "Arizona",
+    "lat": 32.9480,
+    "lng": -112.7170,
+    "title": "Gila Bend Flats — Central Corridor",
+    "solar_resource_value": 6.7,
+    "estimated_land_cost_band": "low",
+    "distance_to_infra_estimate": "near",
+    "slope_estimate": 1.2,
+    "open_land_score": 90,
+    "passes_strict_filters": true,
+    "qualification_reasons": [
+      "Existing cluster of operating utility-scale solar plants validates siting",
+      "Flat alluvial terrain with excellent panel layout economics",
+      "Short feeder distance to APS transmission infrastructure"
+    ],
+    "caution_notes": [
+      "Interconnection queue in Maricopa pocket is actively congesting",
+      "Groundwater access restrictions are tightening"
+    ],
+    "gemini_summary_seed": "Gila Bend is a proven utility-scale corridor — geography, land prices, and transmission are all favorable, but queue timing now dominates project risk.",
+    "overall_site_score": 92
+  },
+  {
+    "id": "az-kingman-01",
+    "state_code": "AZ",
+    "state_name": "Arizona",
+    "lat": 35.1894,
+    "lng": -114.0530,
+    "title": "Kingman Valley — Northwest AZ",
+    "solar_resource_value": 6.3,
+    "estimated_land_cost_band": "low",
+    "distance_to_infra_estimate": "moderate",
+    "slope_estimate": 2.8,
+    "open_land_score": 82,
+    "passes_strict_filters": true,
+    "qualification_reasons": [
+      "Strong DNI with cooler panel temperatures improving yield",
+      "Wide-open valley with predominantly low-slope parcels",
+      "Near Mead–Phoenix transmission path"
+    ],
+    "caution_notes": [
+      "Parcelization is more fragmented than central AZ",
+      "Verify Hualapai Tribe consultation requirements for nearby parcels"
+    ],
+    "gemini_summary_seed": "Kingman offers a cooler-climate variant on southwestern utility-scale solar — slightly further from load but with good transmission access.",
+    "overall_site_score": 85
+  },
+  {
+    "id": "az-safford-01",
+    "state_code": "AZ",
+    "state_name": "Arizona",
+    "lat": 32.8340,
+    "lng": -109.7080,
+    "title": "Safford Basin — Eastern AZ",
+    "solar_resource_value": 6.4,
+    "estimated_land_cost_band": "low",
+    "distance_to_infra_estimate": "moderate",
+    "slope_estimate": 3.1,
+    "open_land_score": 80,
+    "passes_strict_filters": true,
+    "qualification_reasons": [
+      "Broad, low-slope basin with consistent irradiance",
+      "Agricultural land conversion economics are attractive",
+      "Accessible SRP/TEP transmission via existing substations"
+    ],
+    "caution_notes": [
+      "Competition for irrigation-rights parcels with agricultural users",
+      "Confirm county-level utility-scale zoning overlay"
+    ],
+    "gemini_summary_seed": "Safford Basin screens as a solid secondary AZ option: strong solar, cheap flat land, moderate transmission, with agriculture competing for the best parcels.",
+    "overall_site_score": 82
+  },
+  {
+    "id": "az-willcox-01",
+    "state_code": "AZ",
+    "state_name": "Arizona",
+    "lat": 32.2530,
+    "lng": -109.8320,
+    "title": "Willcox Playa — Southeast AZ",
+    "solar_resource_value": 6.5,
+    "estimated_land_cost_band": "low",
+    "distance_to_infra_estimate": "moderate",
+    "slope_estimate": 1.8,
+    "open_land_score": 85,
+    "passes_strict_filters": true,
+    "qualification_reasons": [
+      "Extremely flat playa-adjacent terrain minimizes earthworks",
+      "Strong year-round irradiance with low cloud cover",
+      "Historical agricultural land with clear ownership structure"
+    ],
+    "caution_notes": [
+      "Playa-adjacent hydrology requires stormwater design review",
+      "Migratory bird overlay near Willcox Playa IBA"
+    ],
+    "gemini_summary_seed": "Willcox offers excellent physical fundamentals for utility-scale PV, with playa hydrology and avian overlays as the primary diligence items.",
+    "overall_site_score": 84
+  },
+  {
+    "id": "nv-eldorado-01",
+    "state_code": "NV",
+    "state_name": "Nevada",
+    "lat": 35.7400,
+    "lng": -114.9680,
+    "title": "Eldorado Valley — South NV",
+    "solar_resource_value": 6.9,
+    "estimated_land_cost_band": "low",
+    "distance_to_infra_estimate": "near",
+    "slope_estimate": 1.4,
+    "open_land_score": 90,
+    "passes_strict_filters": true,
+    "qualification_reasons": [
+      "Home to some of the largest operating U.S. solar plants — proven corridor",
+      "Adjacent to major 500kV transmission toward Las Vegas load center",
+      "Federally designated BLM solar energy zone with streamlined permitting"
+    ],
+    "caution_notes": [
+      "Queue congestion in southern NV is severe",
+      "Desert tortoise critical habitat requires mitigation planning"
+    ],
+    "gemini_summary_seed": "Eldorado Valley is arguably the most proven utility-scale solar basin in North America; physical fundamentals are excellent and only queue access constrains new entrants.",
+    "overall_site_score": 95
+  },
+  {
+    "id": "nv-pahrump-01",
+    "state_code": "NV",
+    "state_name": "Nevada",
+    "lat": 36.2080,
+    "lng": -115.9840,
+    "title": "Pahrump Valley — Southwest NV",
+    "solar_resource_value": 6.7,
+    "estimated_land_cost_band": "low",
+    "distance_to_infra_estimate": "moderate",
+    "slope_estimate": 2.1,
+    "open_land_score": 84,
+    "passes_strict_filters": true,
+    "qualification_reasons": [
+      "Excellent DNI with low cloud cover",
+      "Broad, low-slope valley with large BLM tracts",
+      "Short haul to Las Vegas and southern CA load"
+    ],
+    "caution_notes": [
+      "Water-rights constraints are significant in Nye County",
+      "Endangered species surveys often required pre-construction"
+    ],
+    "gemini_summary_seed": "Pahrump is a strong second-tier Nevada basin with solid physical characteristics; environmental diligence and transmission routing dominate project timelines.",
+    "overall_site_score": 86
+  },
+  {
+    "id": "nm-deming-01",
+    "state_code": "NM",
+    "state_name": "New Mexico",
+    "lat": 32.2780,
+    "lng": -107.8060,
+    "title": "Deming Plains — Southwest NM",
+    "solar_resource_value": 6.6,
+    "estimated_land_cost_band": "low",
+    "distance_to_infra_estimate": "moderate",
+    "slope_estimate": 1.7,
+    "open_land_score": 88,
+    "passes_strict_filters": true,
+    "qualification_reasons": [
+      "High-desert irradiance rivals southern Arizona",
+      "Large private and state-trust parcels at attractive prices",
+      "Near SunZia / proposed transmission corridors"
+    ],
+    "caution_notes": [
+      "SunZia and related corridor timelines still have delivery risk",
+      "Water permitting for construction is a local friction"
+    ],
+    "gemini_summary_seed": "Deming offers AZ-quality solar economics with cheaper land; the bet is whether new transmission lands on schedule.",
+    "overall_site_score": 84
+  },
+  {
+    "id": "nm-roswell-01",
+    "state_code": "NM",
+    "state_name": "New Mexico",
+    "lat": 33.3940,
+    "lng": -104.5230,
+    "title": "Roswell Basin — East NM",
+    "solar_resource_value": 6.3,
+    "estimated_land_cost_band": "low",
+    "distance_to_infra_estimate": "moderate",
+    "slope_estimate": 2.2,
+    "open_land_score": 84,
+    "passes_strict_filters": true,
+    "qualification_reasons": [
+      "Broad flat basin with year-round sun and low humidity",
+      "Access to Permian load growth and expanding transmission",
+      "Low-cost ranch-land conversion opportunity"
+    ],
+    "caution_notes": [
+      "High local dust load affects soiling and O&M modeling",
+      "Verify co-location with oil & gas lease overlays"
+    ],
+    "gemini_summary_seed": "Roswell benefits from Permian demand and cheap flat land; soiling and lease overlays require careful diligence but fundamentals are strong.",
+    "overall_site_score": 82
+  }
+]
