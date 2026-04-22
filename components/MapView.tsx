@@ -116,7 +116,7 @@ export default function MapView({
         fitBoundsOptions: { padding: 40 },
         maxBounds: US_MAX_BOUNDS,
         minZoom: 2.5,
-        maxZoom: 9,
+        maxZoom: 11,
         attributionControl: { compact: true },
         renderWorldCopies: false,
         dragRotate: false,
@@ -181,6 +181,25 @@ export default function MapView({
               0.8,
             ],
           },
+        });
+
+
+        map.addLayer({
+          id: "state-labels",
+          type: "symbol",
+          source: "us-states",
+          layout: {
+            "text-field": ["coalesce", ["get", "state_name"], ""],
+            "text-size": ["interpolate", ["linear"], ["zoom"], 3, 9, 6, 12, 9, 14],
+            "text-font": ["Open Sans Regular"],
+            "text-allow-overlap": false,
+          },
+          paint: {
+            "text-color": "#cbd5e1",
+            "text-halo-color": "#020617",
+            "text-halo-width": 1,
+          },
+          minzoom: 3,
         });
 
         // Candidate sites: glow halo + inner dot.
@@ -368,7 +387,7 @@ export default function MapView({
     }
     const b = bboxOfFeature(feat);
     if (b) {
-      map.fitBounds(b, { padding: 80, duration: 1000, essential: true, maxZoom: 7 });
+      map.fitBounds(b, { padding: 70, duration: 1000, essential: true, maxZoom: 9.2 });
     }
   }, [selectedStateCode]);
 
@@ -389,7 +408,7 @@ export default function MapView({
       if (s) {
         map.easeTo({
           center: [s.lng, s.lat],
-          zoom: Math.max(map.getZoom(), 7),
+          zoom: Math.max(map.getZoom(), 10),
           duration: 800,
         });
       }

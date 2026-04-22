@@ -1,0 +1,9 @@
+{
+  "runAnalysis": "Run Analysis",
+  "running": "Running analysis...",
+  "complete": "Run complete",
+  "noResults": "No feasible candidates passed strict filters.",
+  "debugJson": "Debug JSON",
+  "stateIntelligence": "State intelligence",
+  "usaOverview": "USA macro overview"
+}

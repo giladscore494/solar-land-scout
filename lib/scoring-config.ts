@@ -44,3 +44,22 @@ export const TIER_CUTOFFS = {
   tier2: 66,
   tier3: 52,
 } as const;
+
+
+export const FEASIBILITY_THRESHOLDS = {
+  max_slope_percent: 6,
+  max_flood_risk_score: 70,
+  max_wetlands_impact_score: 55,
+  exclude_protected_areas: true,
+  min_feasibility_score: 62,
+};
+
+export const FEASIBILITY_WEIGHTS = {
+  solar: 0.3,
+  slope: 0.18,
+  openLand: 0.16,
+  landCost: 0.14,
+  infra: 0.1,
+  floodPenalty: 0.06,
+  wetlandsPenalty: 0.06,
+};
