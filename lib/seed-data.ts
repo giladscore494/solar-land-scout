@@ -113,7 +113,7 @@ function buildSiteSummaryHe(stateNameEn: string, site: RawSiteSeed) {
 
 function buildSeedReasonsHe(site: RawSiteSeed): string[] {
   return [
-    `משאב סולארי מוערך של ${site.solar_resource_value.toFixed(1)} kWh/m²/day.` ,
+    `משאב סולארי מוערך של ${site.solar_resource_value.toFixed(1)} kWh/m²/day.`,
     `שיפוע מוערך של ${site.slope_estimate.toFixed(1)}% מתאים לפריסה ראשונית.`,
     `ציון שטח פתוח ${site.open_land_score}/100 תומך בבחינה נוספת.`,
     `רמת עלות הקרקע ${site.estimated_land_cost_band} וקרבת התשתית ${site.distance_to_infra_estimate} תומכות בסינון הראשוני.`
