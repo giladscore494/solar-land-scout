@@ -33,11 +33,11 @@ export async function logStartupBanner(): Promise<void> {
 
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
-    lines.push(row("DATABASE_URL", "✖ missing"));
+    lines.push(row("DATABASE_URL", "✖ DATABASE_URL missing"));
   } else {
-    const pool = getPostgresPool();
+    const pool = await getPostgresPool();
     if (!pool) {
-      lines.push(row("DATABASE_URL", "✖ pg driver unavailable"));
+      lines.push(row("DATABASE_URL", "✖ pg driver not installed"));
     } else {
       try {
         const start = Date.now();

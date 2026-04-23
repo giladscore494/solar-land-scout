@@ -76,6 +76,9 @@ npm run dev
 | `GOOGLE_SOLAR_API_KEY`     | Google Solar API (Tier 2 enrichment)        | server |
 | `DATABASE_URL`             | PostgreSQL connection string for persistent repository | server |
 
+> **PostgreSQL note:** The `pg` npm package is required for DB connectivity; without it, the app silently falls back to JSON seeds.
+> It is now declared as a regular `dependencies` entry so `npm install` on a clean clone resolves it automatically.
+
 All new variables are optional — the app boots and serves a deterministic
 response even when every optional key is missing. `NEXT_PUBLIC_MAPBOX_TOKEN`
 is required only to show the satellite basemap toggle; `GOOGLE_SOLAR_API_KEY`

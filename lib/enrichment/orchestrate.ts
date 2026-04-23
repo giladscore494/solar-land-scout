@@ -45,7 +45,7 @@ async function cacheGet(
   source: string,
   ttlMs: number
 ): Promise<EnrichmentResult | null> {
-  const pool = getPostgresPool();
+  const pool = await getPostgresPool();
   if (!pool) return null;
   try {
     await ensureSchema(pool);
@@ -64,7 +64,7 @@ async function cacheGet(
 }
 
 async function cachePut(siteId: string, source: string, result: EnrichmentResult): Promise<void> {
-  const pool = getPostgresPool();
+  const pool = await getPostgresPool();
   if (!pool) return;
   try {
     await pool.query(
@@ -79,7 +79,7 @@ async function cachePut(siteId: string, source: string, result: EnrichmentResult
 }
 
 async function persistEnriched(site: CandidateSite): Promise<void> {
-  const pool = getPostgresPool();
+  const pool = await getPostgresPool();
   if (!pool) return;
   try {
     await pool.query(

@@ -3,7 +3,7 @@ import { hydrateStateMacro, computeSiteScore } from "./scoring";
 import { passesStrictFilters } from "./filters";
 import statesSeed from "@/data/us_states_macro.json";
 import sitesSeed from "@/data/candidate_sites.json";
-import { getPostgresPool } from "./postgres";
+import { getPostgresPool, type QueryablePool } from "./postgres";
 import { ensureSchema } from "./db-schema";
 import { kickBanner } from "./startup-banner";
 
@@ -118,10 +118,13 @@ type DbSiteRow = {
 
 class PostgresRepository implements DataRepository {
   private readonly fallback = new JsonRepository();
-  private readonly pool = getPostgresPool();
+  private pool: QueryablePool | null = null;
   private initialized = false;
 
   private async init(): Promise<boolean> {
+    if (!this.pool) {
+      this.pool = await getPostgresPool();
+    }
     if (!this.pool) return false;
 
     try {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPostgresPool } from "@/lib/postgres";
+import { getPostgresPool, getPostgresLoadError } from "@/lib/postgres";
 import { ensureSchema } from "@/lib/db-schema";
 
 export const runtime = "nodejs";
@@ -54,6 +54,8 @@ export async function GET() {
   // DB diagnostics
   const database: {
     connected: boolean;
+    driver_installed: boolean;
+    driver_load_error: string | null;
     latency_ms: number;
     schema_ready: boolean;
     states_rows: number;
@@ -61,6 +63,8 @@ export async function GET() {
     error: string | null;
   } = {
     connected: false,
+    driver_installed: false,
+    driver_load_error: null,
     latency_ms: 0,
     schema_ready: false,
     states_rows: 0,
@@ -68,8 +72,9 @@ export async function GET() {
     error: null,
   };
 
-  const pool = env.database.configured ? getPostgresPool() : null;
+  const pool = env.database.configured ? await getPostgresPool() : null;
   if (pool) {
+    database.driver_installed = true;
     try {
       const start = Date.now();
       await pool.query("SELECT 1");
@@ -93,7 +98,9 @@ export async function GET() {
       database.error = err instanceof Error ? err.message : "connection error";
     }
   } else if (env.database.configured) {
-    database.error = "pg driver unavailable";
+    const driverErr = getPostgresLoadError();
+    database.driver_load_error = driverErr;
+    database.error = driverErr ? "pg driver not installed" : "pg driver unavailable";
   }
 
   // Enricher reachability — run in parallel under a 3s cap.
@@ -138,7 +145,7 @@ export async function GET() {
 
   return NextResponse.json(
     {
-      ok: true,
+      ok: !env.database.configured || database.driver_installed,
       generated_at: new Date().toISOString(),
       env,
       database,
