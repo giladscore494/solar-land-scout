@@ -5,10 +5,12 @@ export async function recordImportStart(
   dataset: string,
   sourceUrl: string
 ): Promise<number> {
+  // INSERT without conflict clause: each import run gets its own row.
+  // The UNIQUE(dataset, started_at) constraint prevents true duplicates within
+  // the same clock tick, but separate runs always create new rows as intended.
   const result = (await pool.query(
     `INSERT INTO gis_imports (dataset, source_url, status, started_at)
      VALUES ($1, $2, 'started', NOW())
-     ON CONFLICT (dataset, started_at) DO UPDATE SET status='started'
      RETURNING id`,
     [dataset, sourceUrl]
   )) as { rows: { id: number }[] };

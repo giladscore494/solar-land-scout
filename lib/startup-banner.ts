@@ -84,7 +84,7 @@ export async function logStartupBanner(): Promise<void> {
         lines.push(row("SUPABASE_DATABASE_URL", `✔ connected (${latency}ms)`));
         try {
           const ver = (await spatialPool.query(
-            "SELECT PostGIS_Version() AS v"
+            "SELECT PostGIS_version() AS v"
           )) as { rows: { v: string }[] };
           lines.push(row("PostGIS version", `✔ ${ver.rows[0]?.v ?? "unknown"}`));
         } catch {

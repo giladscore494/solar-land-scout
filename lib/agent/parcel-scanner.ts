@@ -55,8 +55,8 @@ async function findHotZones(stateCode: string, signal?: AbortSignal): Promise<Ho
     if (ghi !== null && ghi >= GHI_THRESHOLD) {
       hotZones.push({ bbox: cell.bboxDeg, ghi });
     }
-    // Small delay to avoid rate limiting
-    await new Promise((r) => setTimeout(r, 100));
+    // Brief delay to avoid rate-limiting NASA POWER (50ms is sufficient).
+    await new Promise((r) => setTimeout(r, 50));
   }
 
   return hotZones;
@@ -208,9 +208,13 @@ export async function runParcelScan(
 
         const metrics: ParcelMetrics = {
           total_acres: totalAcres,
+          // TODO: compute via ST_Difference(geom, UNION(wetlands, flood_sfha, road_buffer_30m))
           usable_acres: totalAcres * 0.8,
+          // TODO: compute via ST_Area(ST_LargestPart(usable_geom))
           contiguous_usable_acres: totalAcres * 0.7,
+          // TODO: compute via 4*PI()*area / perimeter^2
           shape_regularity: 0.7,
+          // TODO: sample USGS elevation at 9 points, derive mean+stddev slope
           mean_slope_percent: 2.0,
           slope_stddev_percent: 1.0,
           in_protected_area: spatialMetrics?.in_protected_area ?? false,

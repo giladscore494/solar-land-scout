@@ -46,7 +46,10 @@ export async function importPadusAz(pool: QueryablePool): Promise<number> {
       for (const feat of fc.features) {
         if (!feat.geometry) continue;
         const geomJson = JSON.stringify(feat.geometry);
-        const sourceId = String(feat.properties.OBJECTID ?? `padus_az_${totalRows}`);
+        // Skip features without a stable OBJECTID — a fallback like totalRows
+        // is non-deterministic across retries and would corrupt ON CONFLICT logic.
+        if (feat.properties.OBJECTID == null) continue;
+        const sourceId = String(feat.properties.OBJECTID);
         const name = typeof feat.properties.Unit_Nm === "string" ? feat.properties.Unit_Nm : null;
         const designation = typeof feat.properties.Designation === "string" ? feat.properties.Designation : null;
         const agency = typeof feat.properties.Mang_Name === "string" ? feat.properties.Mang_Name : null;

@@ -60,13 +60,13 @@ export async function POST(req: NextRequest) {
         const result = await importAll(pool, {
           datasets: datasets.length > 0 ? datasets : undefined,
           dryRun,
-          onProgress: (dataset, status, rows) => {
+          onProgress: (dataset, status, rows, error) => {
             if (status === "started") {
               emit("dataset_progress", { dataset, status: "started" });
             } else if (status === "completed") {
               emit("dataset_completed", { dataset, rows });
             } else if (status === "error") {
-              emit("import_error", { dataset, error: status });
+              emit("import_error", { dataset, error: error ?? "import_failed" });
             }
           },
         });

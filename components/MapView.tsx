@@ -53,6 +53,8 @@ export default function MapView({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const readyRef = useRef<boolean>(false);
+  // Throttle camera moves to at most 1 per 500ms to avoid jitter during fast scans.
+  const lastCameraMoveRef = useRef<number>(0);
 
   // Keep stable refs to latest callbacks so handlers don't churn.
   const cbRef = useRef({ onSelectState, onSelectSite });
@@ -584,6 +586,10 @@ export default function MapView({
     if (!scanState?.currentCellId) return;
     const cell = scanState.cellResults.get(scanState.currentCellId);
     if (!cell) return;
+    // Throttle: at most one camera move per 500ms.
+    const now = Date.now();
+    if (now - lastCameraMoveRef.current < 500) return;
+    lastCameraMoveRef.current = now;
     const [minLng, minLat, maxLng, maxLat] = cell.bbox;
     const centerLng = (minLng + maxLng) / 2;
     const centerLat = (minLat + maxLat) / 2;

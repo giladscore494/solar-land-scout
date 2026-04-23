@@ -18,7 +18,7 @@ export interface ImportAllOptions {
   stateCode?: string;
   datasets?: DatasetKey[];
   dryRun?: boolean;
-  onProgress?: (dataset: string, status: string, rows?: number) => void;
+  onProgress?: (dataset: string, status: string, rows?: number, error?: string) => void;
 }
 
 export interface ImportAllResult {
@@ -83,7 +83,7 @@ export async function importAll(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       results[dataset] = { rows: 0, error: msg };
-      onProgress?.(dataset, "error");
+      onProgress?.(dataset, "error", 0, msg);
     }
   }
 
