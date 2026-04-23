@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import MapView, { mapboxTokenConfigured } from "./MapView";
 import Sidebar from "./Sidebar";
 import Legend from "./Legend";
+import { useScanController } from "./ScanController";
 import type {
   AnalysisRun,
   CandidateSite,
@@ -36,6 +37,9 @@ export default function AppShell() {
   const [filters, setFilters] = useState<SiteFilters>(DEFAULT_FILTERS);
   const [selectedStateCode, setSelectedStateCode] = useState<string | null>(null);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
+
+  // SSE scan controller
+  const scanController = useScanController();
 
   // Mobile: panel open/closed. On large screens the panel is always visible.
   const [panelOpen, setPanelOpen] = useState(false);
@@ -117,30 +121,47 @@ export default function AppShell() {
 
   const handleRunAnalysis = useCallback(async () => {
     if (!selectedStateCode) return;
+
+    // Use SSE scan controller — opens panel automatically
+    setPanelOpen(true);
+    scanController.start(selectedStateCode);
+
+    // Also set legacy runStatus so UI buttons disable correctly
     setRunStatus("running");
     setRunError(null);
-    try {
-      const res = await fetch("/api/analyze-state", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state_code: selectedStateCode, language }),
+  }, [selectedStateCode, scanController, setPanelOpen]);
+
+  // When scan completes, refresh sites and update legacy state
+  useEffect(() => {
+    if (scanController.state.status === "done") {
+      const passedSites = scanController.state.passedSites;
+      if (passedSites.length > 0) {
+        setSites((prev) => {
+          const ids = new Set(passedSites.map((s) => s.id));
+          return [...prev.filter((s) => !ids.has(s.id)), ...passedSites];
+        });
+        setAllCandidates((prev) => {
+          const ids = new Set(passedSites.map((s) => s.id));
+          return [...prev.filter((s) => !ids.has(s.id)), ...passedSites];
+        });
+      }
+      setRunDebug({
+        state_code: selectedStateCode,
+        total_generated: scanController.state.progress.total,
+        total_passing_strict: scanController.state.tally.passed,
+        rejected_by: scanController.state.tally.rejected_by,
       });
-      if (!res.ok) throw new Error(`status ${res.status}`);
-      const data = (await res.json()) as {
-        sites: CandidateSite[];
-        all_candidates?: CandidateSite[];
-        run_debug?: Record<string, unknown> | null;
-      };
-      setSites(data.sites ?? []);
-      setAllCandidates(data.all_candidates ?? data.sites ?? []);
-      setRunDebug(data.run_debug ?? null);
       setRunStatus("complete");
-      await refreshRuns(selectedStateCode);
-    } catch (e) {
+      if (selectedStateCode) {
+        refreshRuns(selectedStateCode).catch(() => undefined);
+      }
+    } else if (scanController.state.status === "error") {
       setRunStatus("error");
-      setRunError(e instanceof Error ? e.message : "analysis_failed");
+      setRunError(scanController.state.errorMessage ?? "scan_failed");
+    } else if (scanController.state.status === "scanning") {
+      setRunStatus("running");
     }
-  }, [selectedStateCode, language, refreshRuns]);
+  }, [scanController.state.status, scanController.state.passedSites, scanController.state.progress.total, scanController.state.tally, scanController.state.errorMessage, selectedStateCode, refreshRuns]);
 
   const handleSelectState = useCallback((code: string | null) => {
     setSelectedStateCode(code);
@@ -324,6 +345,8 @@ export default function AppShell() {
           onSelectSite={handleSelectSite}
           onClearState={() => handleSelectState(null)}
           onRequestClose={() => setPanelOpen(false)}
+          scanState={scanController.state}
+          onCancelScan={scanController.cancel}
         />
       </aside>
     </main>
