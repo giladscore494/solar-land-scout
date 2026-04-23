@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPostgresPool, getPostgresLoadError } from "@/lib/postgres";
 import { getPostGISPool, getPostGISLoadError } from "@/lib/postgis";
 import { ensureSchema } from "@/lib/db-schema";
+import { ensureSpatialSchema } from "@/lib/postgis-schema";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,6 +54,7 @@ export async function GET() {
     spatial_database: { configured: !!process.env.SUPABASE_DATABASE_URL?.trim() },
     anthropic: envEntry(process.env.ANTHROPIC_API_KEY),
     supabase_publishable: envEntry(process.env.SUPABASE_PUBLISHABLE_KEY),
+    supabase_secret: envEntry(process.env.SUPABASE_SECRET_KEY),
   };
 
   // DB diagnostics
@@ -113,6 +115,7 @@ export async function GET() {
     driver_installed: boolean;
     driver_load_error: string | null;
     latency_ms: number;
+    schema_ready: boolean;
     postgis_version: string | null;
     parcels_count: number;
     transmission_count: number;
@@ -122,6 +125,7 @@ export async function GET() {
     driver_installed: false,
     driver_load_error: null,
     latency_ms: 0,
+    schema_ready: false,
     postgis_version: null,
     parcels_count: 0,
     transmission_count: 0,
@@ -138,6 +142,8 @@ export async function GET() {
         spatial_database.connected = true;
         spatial_database.latency_ms = Date.now() - start;
         try {
+          await ensureSpatialSchema(spatialPool);
+          spatial_database.schema_ready = true;
           const ver = (await spatialPool.query(
             "SELECT PostGIS_Version() AS v"
           )) as { rows: { v: string }[] };

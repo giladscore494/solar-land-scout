@@ -92,8 +92,28 @@ export async function runParcelScan(
   let processed = 0;
   let total = 0;
 
+  // Heartbeat state
+  let currentStage = "initializing";
+  let currentActivity = `Starting parcel scan for ${stateCode}`;
+  const scanStart = Date.now();
+
+  const heartbeatTimer = setInterval(() => {
+    if (signal?.aborted) return;
+    emit({
+      type: "scan_heartbeat",
+      stage: currentStage,
+      activity: currentActivity,
+      processed,
+      total,
+      elapsed_ms: Date.now() - scanStart,
+      at: new Date().toISOString(),
+    });
+  }, 1000);
+
   try {
     // Stage 1: Find hot zones
+    currentStage = "finding_hot_zones";
+    currentActivity = `Identifying high-GHI hot zones for ${stateCode} via NASA POWER`;
     const hotZones = await findHotZones(stateCode, signal);
 
     emit({
@@ -104,6 +124,8 @@ export async function runParcelScan(
     } as ScanEvent);
 
     // Stage 2: Query parcels in hot zones
+    currentStage = "querying_parcels";
+    currentActivity = `Querying parcels in ${hotZones.length} hot zone(s)`;
     for (const zone of hotZones) {
       if (signal?.aborted) break;
 
@@ -140,9 +162,11 @@ export async function runParcelScan(
 
       total += parcelResult.rows.length;
 
+      currentStage = "evaluating_parcels";
       for (const parcel of parcelResult.rows) {
         if (signal?.aborted) break;
         processed++;
+        currentActivity = `Evaluating parcel ${processed}/${total} (APN: ${parcel.apn ?? parcel.id}) — ${passedSites.length} passed`;
 
         emit({
           type: "parcel_evaluated",
@@ -331,6 +355,8 @@ export async function runParcelScan(
     }
 
     if (run) {
+      currentStage = "finalizing";
+      currentActivity = `Finalizing: ${processed} parcels evaluated, ${passedSites.length} passed`;
       try {
         await completeAnalysisRun(run.id, "completed", `Parcel scan: ${processed} parcels, ${passedSites.length} passed`, null);
       } catch {
@@ -356,15 +382,22 @@ export async function runParcelScan(
       sites: passedSites,
     };
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "scan_failed";
+    const cancelled = signal?.aborted ?? false;
+    const msg = cancelled
+      ? "scan_cancelled"
+      : error instanceof Error
+      ? error.message
+      : "scan_failed";
     if (run) {
       try {
-        await completeAnalysisRun(run.id, "failed", msg, null);
+        await completeAnalysisRun(run.id, cancelled ? "cancelled" : "failed", msg, null);
       } catch {
         // non-fatal
       }
     }
-    emit({ type: "scan_error", message: msg, at: new Date().toISOString() });
+    emit({ type: "scan_error", message: msg, stage: currentStage, cancelled, at: new Date().toISOString() });
     throw error;
+  } finally {
+    clearInterval(heartbeatTimer);
   }
 }

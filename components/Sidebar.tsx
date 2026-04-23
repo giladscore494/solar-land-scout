@@ -614,6 +614,9 @@ interface HealthResponse {
     mapbox: { configured: boolean; masked: string | null };
     googleSolar: { configured: boolean; masked: string | null };
     database: { configured: boolean };
+    spatial_database: { configured: boolean };
+    supabase_publishable: { configured: boolean; masked: string | null };
+    supabase_secret: { configured: boolean; masked: string | null };
   };
   database: {
     connected: boolean;
@@ -621,6 +624,15 @@ interface HealthResponse {
     schema_ready: boolean;
     states_rows: number;
     sites_rows: number;
+    error: string | null;
+  };
+  spatial_database: {
+    connected: boolean;
+    latency_ms: number;
+    schema_ready: boolean;
+    postgis_version: string | null;
+    parcels_count: number;
+    transmission_count: number;
     error: string | null;
   };
   enrichers: Record<string, { reachable: boolean; latency_ms: number; error?: string }>;
@@ -658,10 +670,11 @@ function SystemStatus() {
     if (!health) return "amber";
     const envOk = health.env.gemini.configured && health.env.database.configured;
     const dbOk = !health.env.database.configured || health.database.connected;
+    const spatialOk = !health.env.spatial_database.configured || health.spatial_database?.connected;
     const probes = Object.values(health.enrichers);
     const reachable = probes.filter((p) => p.reachable).length;
     const ratio = probes.length > 0 ? reachable / probes.length : 1;
-    if (dbOk && envOk && ratio >= 0.75) return "green";
+    if (dbOk && spatialOk && envOk && ratio >= 0.75) return "green";
     if (!dbOk || ratio < 0.4) return "red";
     return "amber";
   }, [health]);
@@ -727,6 +740,30 @@ function SystemStatus() {
                       : health.database.error ?? "disconnected"
                     : "not configured"
                 }
+              />
+              <div className="mt-2 border-t border-line/70 pt-1.5 text-[10.5px] uppercase tracking-[0.14em] text-ink-400">
+                Supabase / Spatial DB
+              </div>
+              <StatusRow
+                label="DB URL"
+                ok={health.env.spatial_database.configured && (health.spatial_database?.connected ?? false)}
+                detail={
+                  health.env.spatial_database.configured
+                    ? health.spatial_database?.connected
+                      ? `${health.spatial_database.latency_ms}ms · schema ${health.spatial_database.schema_ready ? "✔" : "✖"} · ${health.spatial_database.parcels_count} parcels`
+                      : health.spatial_database?.error ?? "disconnected"
+                    : "not configured"
+                }
+              />
+              <StatusRow
+                label="Publishable key"
+                ok={health.env.supabase_publishable?.configured ?? false}
+                detail={health.env.supabase_publishable?.masked ?? "not configured"}
+              />
+              <StatusRow
+                label="Secret key"
+                ok={health.env.supabase_secret?.configured ?? false}
+                detail={health.env.supabase_secret?.masked ?? "not configured"}
               />
               <div className="mt-2 border-t border-line/70 pt-1.5 text-[10.5px] uppercase tracking-[0.14em] text-ink-400">
                 Enrichers

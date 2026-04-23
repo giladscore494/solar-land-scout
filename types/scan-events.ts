@@ -47,6 +47,21 @@ export type ScanEvent =
   | {
       type: "scan_error";
       message: string;
+      /** The analysis stage where the error occurred, e.g. "scanning_cells" */
+      stage?: string;
+      /** True when the scan was explicitly cancelled by the client */
+      cancelled?: boolean;
+      at: string;
+    }
+  | {
+      type: "scan_heartbeat";
+      /** Current processing stage label */
+      stage: string;
+      /** Human-readable description of what is happening right now */
+      activity: string;
+      processed: number;
+      total: number;
+      elapsed_ms: number;
       at: string;
     }
   | {

@@ -42,21 +42,48 @@ export async function runStateScan(
   const bbox = getStateBbox(stateCode);
   const bboxArr: [number, number, number, number] = [bbox.minLng, bbox.minLat, bbox.maxLng, bbox.maxLat];
 
+  // Heartbeat state
+  let currentStage = "initializing";
+  let currentActivity = `Starting grid scan for ${stateCode}`;
+  let processed = 0;
+  let total = 0;
+  const scanStart = Date.now();
+
+  const heartbeatTimer = setInterval(() => {
+    if (signal?.aborted) return;
+    emit({
+      type: "scan_heartbeat",
+      stage: currentStage,
+      activity: currentActivity,
+      processed,
+      total,
+      elapsed_ms: Date.now() - scanStart,
+      at: new Date().toISOString(),
+    });
+  }, 1000);
+
   try {
     // 2. Build grid
+    currentStage = "building_grid";
+    currentActivity = `Building ${sizeKm}km grid for ${stateCode}`;
     emit({ type: "scan_started", stateCode, totalCells: 0, bbox: bboxArr, at: new Date().toISOString() });
 
     const allCells = buildGridForState(stateCode, sizeKm);
+    currentActivity = `Grid built: ${allCells.length} cells`;
 
     // 3. Prefilter
+    currentStage = "prefiltering";
+    currentActivity = `Pre-filtering ${allCells.length} cells via NASA POWER`;
     let kept = allCells;
     try {
       const prefilterResult = await prefilterCells(allCells, signal);
       kept = prefilterResult.kept;
+      currentActivity = `Pre-filter complete: ${kept.length}/${allCells.length} cells kept`;
     } catch (err) {
       // NASA POWER is optional — if prefilter fails, proceed with all cells
       console.warn("[runStateScan] prefilter failed, keeping all cells:", err);
       kept = allCells;
+      currentActivity = `Pre-filter skipped (${err instanceof Error ? err.message : "error"}), scanning all ${allCells.length} cells`;
     }
 
     emit({ type: "scan_started", stateCode, totalCells: kept.length, bbox: bboxArr, at: new Date().toISOString() });
@@ -64,10 +91,9 @@ export async function runStateScan(
     // 4. Track state
     const rejected_by: Record<string, number> = {};
     const passedSites: CandidateSite[] = [];
-    let processed = 0;
     let geminiCallCount = 0;
     let lastGeminiTime = 0;
-    const total = kept.length;
+    total = kept.length;
 
     // Insight accumulator
     const recentResults: string[] = [];
@@ -89,6 +115,8 @@ export async function runStateScan(
     }
 
     // 5. Run worker pool
+    currentStage = "scanning_cells";
+    currentActivity = `Scanning 0/${total} cells`;
     await runWorkerPool({
       tasks: kept,
       concurrency: 8,
@@ -103,6 +131,9 @@ export async function runStateScan(
         // Tally rejection
         const key = rejectionReason === "passed" ? "passed" : rejectionReason;
         rejected_by[key] = (rejected_by[key] ?? 0) + 1;
+
+        // Update heartbeat activity
+        currentActivity = `Scanning cell ${processed}/${total} — ${passedSites.length} passed so far`;
 
         // Emit cell events
         emit({
@@ -138,17 +169,25 @@ export async function runStateScan(
             processed,
             total,
           });
+          currentStage = "generating_insights";
+          currentActivity = `Generating insight after ${processed} cells`;
           await maybeEmitInsight();
+          currentStage = "scanning_cells";
+          currentActivity = `Scanning cell ${processed}/${total} — ${passedSites.length} passed so far`;
         }
       },
     });
 
     // Final insight
     if (recentResults.length > 0) {
+      currentStage = "generating_insights";
+      currentActivity = "Generating final insight summary";
       await maybeEmitInsight(true);
     }
 
     // 6. Persist passing sites
+    currentStage = "persisting_results";
+    currentActivity = `Saving ${passedSites.length} candidate sites to database`;
     if (run && passedSites.length > 0) {
       try {
         await saveCandidateSites(run.id, passedSites.map((s) => ({ ...s, run_id: run.id })));
@@ -158,6 +197,8 @@ export async function runStateScan(
     }
 
     // 7. Finalize run
+    currentStage = "finalizing";
+    currentActivity = "Finalizing analysis run record";
     const summary = `Grid scan: ${total} cells processed, ${passedSites.length} passed. Rejected: ${Object.entries(rejected_by).map(([k, v]) => `${k}=${v}`).join(", ")}`;
 
     if (run) {
@@ -195,16 +236,23 @@ export async function runStateScan(
       sites: passedSites,
     };
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "scan_failed";
+    const cancelled = signal?.aborted ?? false;
+    const msg = cancelled
+      ? "scan_cancelled"
+      : error instanceof Error
+      ? error.message
+      : "scan_failed";
     if (run) {
       try {
-        await completeAnalysisRun(run.id, "failed", msg, null);
+        await completeAnalysisRun(run.id, cancelled ? "cancelled" : "failed", msg, null);
       } catch {
         // non-fatal
       }
     }
-    emit({ type: "scan_error", message: msg, at: new Date().toISOString() });
+    emit({ type: "scan_error", message: msg, stage: currentStage, cancelled, at: new Date().toISOString() });
     throw error;
+  } finally {
+    clearInterval(heartbeatTimer);
   }
 }
 

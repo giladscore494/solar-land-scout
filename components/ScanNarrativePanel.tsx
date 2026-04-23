@@ -8,7 +8,7 @@ interface Props {
 }
 
 export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
-  const { status, progress, tally, insights } = scanState;
+  const { status, progress, tally, insights, activityLine, currentStage, errorMessage, cancelled } = scanState;
 
   if (status === "idle") return null;
 
@@ -27,7 +27,13 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
       <div className="mb-3">
         <div className="mb-1 flex items-center justify-between text-[11px]">
           <span className="font-medium text-ink-200">
-            {status === "scanning" ? "Scanning…" : status === "done" ? "Complete" : "Error"}
+            {status === "scanning"
+              ? "Scanning…"
+              : status === "done"
+              ? "Complete"
+              : cancelled
+              ? "Cancelled"
+              : "Error"}
           </span>
           <span className="text-ink-400">
             {progress.processed}/{progress.total} ({pct}%)
@@ -40,6 +46,14 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
           />
         </div>
       </div>
+
+      {/* Live activity line */}
+      {(status === "scanning" || status === "done") && activityLine && (
+        <div className="mb-2 flex items-start gap-1.5 text-[11px] text-ink-300">
+          <span className="mt-px shrink-0 text-accent-solar" aria-hidden="true">⟳</span>
+          <span className="font-mono">{activityLine}</span>
+        </div>
+      )}
 
       {/* Passed count */}
       <div className="mb-2 text-[11.5px] text-ink-300">
@@ -75,6 +89,22 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
               <span>{text}</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Error / cancellation detail */}
+      {status === "error" && (
+        <div className="mb-2 rounded-md bg-red-500/10 px-2 py-1.5 text-[11px] text-red-300">
+          {cancelled ? (
+            <span>Scan cancelled by user.</span>
+          ) : (
+            <span>
+              {currentStage && (
+                <span className="mr-1 font-semibold">Stage: {currentStage}.</span>
+              )}
+              {errorMessage}
+            </span>
+          )}
         </div>
       )}
 
