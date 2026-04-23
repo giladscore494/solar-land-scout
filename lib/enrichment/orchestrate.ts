@@ -153,19 +153,16 @@ export async function enrichSite(
 
   clearTimeout(timer);
 
-  // Deterministic merge order (matches TIER_1 + google_solar appended).
+  // Deterministic merge order — derived from the TIER_1 array (+ google_solar
+  // appended last) so adding/renaming enrichers cannot drift out of sync.
   const resultsByName = new Map<string, EnrichmentResult>();
   for (const r of results) {
     if (r.status === "fulfilled") resultsByName.set(r.value[0], r.value[1]);
   }
 
-  const order = [
-    "nasa_power",
-    "usgs_elevation",
-    "osm_infra",
-    "usgs_padus",
-    "fema_flood",
-    "google_solar",
+  const order: string[] = [
+    ...TIER_1.map((e) => e.name),
+    googleSolarEnricher.name,
   ];
 
   let next = { ...site } as CandidateSite;

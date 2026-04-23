@@ -9,6 +9,12 @@ import { LRUCache, nowIso, safeFetch, type EnrichmentResult, type SiteEnricher }
 const ENDPOINT = "https://solar.googleapis.com/v1/buildingInsights:findClosest";
 const cache = new LRUCache<CandidateSite["google_solar"]>(500);
 
+/**
+ * Module-level lifetime counter — intentionally not reset on a daily timer
+ * (matches the spec: "cap at 100 calls per server lifetime by default,
+ * configurable via GOOGLE_SOLAR_DAILY_CAP"). The env var name is preserved
+ * for compatibility with the deployment secret.
+ */
 let callCount = 0;
 function cap(): number {
   const envCap = Number(process.env.GOOGLE_SOLAR_DAILY_CAP ?? "");

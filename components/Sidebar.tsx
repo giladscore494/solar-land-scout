@@ -675,7 +675,7 @@ function SystemStatus() {
                 detail={
                   health.env.database.configured
                     ? health.database.connected
-                      ? `${health.database.latency_ms}ms · ${health.database.states_rows}s/${health.database.sites_rows}`
+                      ? `${health.database.latency_ms}ms · ${health.database.states_rows} states / ${health.database.sites_rows} sites`
                       : health.database.error ?? "disconnected"
                     : "not configured"
                 }

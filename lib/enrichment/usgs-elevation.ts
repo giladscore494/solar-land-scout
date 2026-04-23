@@ -87,7 +87,8 @@ export const usgsElevationEnricher: SiteEnricher = {
     }
 
     const maxDelta = Math.max(...neighbours.map((v) => Math.abs(v - c)));
-    // Slope % = 100 * rise / run (run is 100 m).
+    // Slope % = 100 * rise / run, and run = 100 m → the factor cancels. Keep
+    // the explicit form so the formula remains readable.
     const slopePct = Math.max(0, Math.min(100, (100 * maxDelta) / 100));
     const rounded = Number(slopePct.toFixed(2));
 

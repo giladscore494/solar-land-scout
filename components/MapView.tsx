@@ -34,8 +34,7 @@ interface MapViewProps {
   basemap?: "dark" | "satellite";
 }
 
-const MAPBOX_TOKEN =
-  typeof process !== "undefined" ? process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "" : "";
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
 let warnedMissingMapbox = false;
 
