@@ -133,7 +133,7 @@ export async function getRunDebug(runId: number) {
   if (!pool) return null;
   await ensureSchema(pool);
   const result = await pool.query(
-    `SELECT gemini_debug_json, state_code, status, started_at, completed_at, notes FROM analysis_runs WHERE id=$1 LIMIT 1`,
+    `SELECT gemini_debug_json, rejected_by_json, state_code, status, started_at, completed_at, notes FROM analysis_runs WHERE id=$1 LIMIT 1`,
     [runId]
   );
   const row = result.rows[0];
@@ -158,6 +158,7 @@ export async function getRunDebug(runId: number) {
       notes: row.notes,
     },
     run_debug: row.gemini_debug_json ?? null,
+    rejected_by: row.rejected_by_json ?? null,
     sites: sites.rows.map((s) => ({
       id: s.id,
       title: s.title,

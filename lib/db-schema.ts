@@ -73,6 +73,8 @@ ALTER TABLE candidate_sites ADD COLUMN IF NOT EXISTS google_solar_json JSONB;
 ALTER TABLE candidate_sites ADD COLUMN IF NOT EXISTS enrichment_provenance_json JSONB;
 ALTER TABLE candidate_sites ADD COLUMN IF NOT EXISTS enrichment_updated_at TIMESTAMPTZ;
 
+ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS rejected_by_json JSONB;
+
 CREATE TABLE IF NOT EXISTS site_enrichment_cache (
   site_id TEXT NOT NULL,
   source TEXT NOT NULL,
