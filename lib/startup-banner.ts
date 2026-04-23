@@ -5,6 +5,8 @@
 
 import { getPostgresPool } from "./postgres";
 import { getPostGISPool } from "./postgis";
+import { ensureSchema } from "./db-schema";
+import { ensureSpatialSchema } from "./postgis-schema";
 
 let hasLogged = false;
 
@@ -32,6 +34,8 @@ export async function logStartupBanner(): Promise<void> {
   lines.push(row("NEXT_PUBLIC_MAPBOX_TOKEN", mark(!!process.env.NEXT_PUBLIC_MAPBOX_TOKEN?.trim())));
   lines.push(row("GOOGLE_SOLAR_API_KEY", mark(!!process.env.GOOGLE_SOLAR_API_KEY?.trim())));
   lines.push(row("ANTHROPIC_API_KEY", mark(!!process.env.ANTHROPIC_API_KEY?.trim())));
+  lines.push(row("SUPABASE_PUBLISHABLE_KEY", mark(!!process.env.SUPABASE_PUBLISHABLE_KEY?.trim())));
+  lines.push(row("SUPABASE_SECRET_KEY", mark(!!process.env.SUPABASE_SECRET_KEY?.trim())));
 
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -47,6 +51,7 @@ export async function logStartupBanner(): Promise<void> {
         const latency = Date.now() - start;
         lines.push(row("DATABASE_URL", `✔ connected (${latency}ms)`));
         try {
+          await ensureSchema(pool);
           const states = (await pool.query(
             "SELECT COUNT(*)::text AS c FROM states_macro"
           )) as { rows: { c: string }[] };
@@ -60,7 +65,7 @@ export async function logStartupBanner(): Promise<void> {
             )
           );
         } catch {
-          lines.push(row("PG schema ready", "✖ tables not initialised yet"));
+          lines.push(row("PG schema ready", "✖ tables not initialised (ensureSchema failed)"));
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "unknown error";
@@ -82,6 +87,13 @@ export async function logStartupBanner(): Promise<void> {
         await spatialPool.query("SELECT 1");
         const latency = Date.now() - start;
         lines.push(row("SUPABASE_DATABASE_URL", `✔ connected (${latency}ms)`));
+        try {
+          await ensureSpatialSchema(spatialPool);
+          lines.push(row("Spatial schema ready", "✔ tables initialised"));
+        } catch (schemaErr) {
+          const schemaMsg = schemaErr instanceof Error ? schemaErr.message : "schema error";
+          lines.push(row("Spatial schema ready", `✖ ${schemaMsg}`));
+        }
         try {
           const ver = (await spatialPool.query(
             "SELECT PostGIS_version() AS v"

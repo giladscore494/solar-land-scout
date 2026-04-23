@@ -88,9 +88,15 @@ export async function POST(req: NextRequest) {
         onEvent: emit,
       })
         .catch((err: unknown) => {
+          const cancelled = req.signal.aborted;
           emit({
             type: "scan_error",
-            message: err instanceof Error ? err.message : "scan_failed",
+            message: cancelled
+              ? "scan_cancelled"
+              : err instanceof Error
+              ? err.message
+              : "scan_failed",
+            cancelled,
             at: new Date().toISOString(),
           });
         })

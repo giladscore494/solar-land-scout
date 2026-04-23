@@ -22,6 +22,12 @@ export interface ScanState {
   insights: string[];
   passedSites: CandidateSite[];
   errorMessage: string | null;
+  /** True when the scan was explicitly cancelled by the user */
+  cancelled: boolean;
+  /** Current processing stage label from the server */
+  currentStage: string | null;
+  /** Human-readable activity description from the latest heartbeat */
+  activityLine: string | null;
   runId: number | null;
   cellResults: Map<string, { verdict: "passed" | "soft_reject" | "hard_reject"; bbox: [number, number, number, number] }>;
 }
@@ -33,7 +39,8 @@ type ScanAction =
   | { type: "INSIGHT"; text: string; cellsCovered: number }
   | { type: "TALLY_UPDATE"; rejected_by: Record<string, number>; passed: number; processed: number; total: number }
   | { type: "COMPLETED"; runId: number | null; passed: number; total: number; rejected_by: Record<string, number> }
-  | { type: "ERROR"; message: string }
+  | { type: "HEARTBEAT"; stage: string; activity: string; processed: number; total: number }
+  | { type: "ERROR"; message: string; stage?: string; cancelled?: boolean }
   | { type: "RESET" };
 
 const initialState: ScanState = {
@@ -44,6 +51,9 @@ const initialState: ScanState = {
   insights: [],
   passedSites: [],
   errorMessage: null,
+  cancelled: false,
+  currentStage: null,
+  activityLine: null,
   runId: null,
   cellResults: new Map(),
 };
@@ -88,9 +98,27 @@ function reducer(state: ScanState, action: ScanAction): ScanState {
         runId: action.runId,
         progress: { processed: action.total, total: action.total },
         tally: { rejected_by: action.rejected_by, passed: action.passed },
+        currentStage: "done",
+        activityLine: `Scan complete — ${action.passed} sites passed out of ${action.total} cells`,
+      };
+    case "HEARTBEAT":
+      return {
+        ...state,
+        currentStage: action.stage,
+        activityLine: action.activity,
+        progress:
+          action.total > 0
+            ? { processed: action.processed, total: action.total }
+            : state.progress,
       };
     case "ERROR":
-      return { ...state, status: "error", errorMessage: action.message };
+      return {
+        ...state,
+        status: "error",
+        errorMessage: action.message,
+        cancelled: action.cancelled ?? false,
+        currentStage: action.stage ?? state.currentStage,
+      };
     case "RESET":
       return initialState;
     default:
@@ -165,6 +193,8 @@ export function useScanController(): ScanControllerHandle {
     } catch (err) {
       if (err instanceof Error && err.name !== "AbortError") {
         dispatch({ type: "ERROR", message: err.message });
+      } else if (err instanceof Error && err.name === "AbortError") {
+        // User-initiated cancellation — RESET is handled by cancel()
       }
     }
   }, []);
@@ -206,8 +236,22 @@ function handleEvent(event: ScanEvent, dispatch: React.Dispatch<ScanAction>): vo
         rejected_by: event.rejected_by,
       });
       break;
+    case "scan_heartbeat":
+      dispatch({
+        type: "HEARTBEAT",
+        stage: event.stage,
+        activity: event.activity,
+        processed: event.processed,
+        total: event.total,
+      });
+      break;
     case "scan_error":
-      dispatch({ type: "ERROR", message: event.message });
+      dispatch({
+        type: "ERROR",
+        message: event.message,
+        stage: event.stage,
+        cancelled: event.cancelled,
+      });
       break;
   }
 }
