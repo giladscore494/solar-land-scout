@@ -10,6 +10,7 @@ import type {
 } from "maplibre-gl";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { CandidateSite, StateMacro } from "@/types/domain";
+import type { ScanState } from "./ScanController";
 import { colorForScore } from "@/lib/color-ramp";
 import { fipsToUsps } from "@/lib/fips";
 
@@ -32,6 +33,7 @@ interface MapViewProps {
   onSelectState: (code: string | null) => void;
   onSelectSite: (id: string | null) => void;
   basemap?: "dark" | "satellite";
+  scanState?: ScanState;
 }
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
@@ -46,10 +48,13 @@ export default function MapView({
   onSelectState,
   onSelectSite,
   basemap = "dark",
+  scanState,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const readyRef = useRef<boolean>(false);
+  // Throttle camera moves to at most 1 per 500ms to avoid jitter during fast scans.
+  const lastCameraMoveRef = useRef<number>(0);
 
   // Keep stable refs to latest callbacks so handlers don't churn.
   const cbRef = useRef({ onSelectState, onSelectSite });
@@ -140,6 +145,71 @@ export default function MapView({
         map.addSource("candidate-sites", {
           type: "geojson",
           data: emptyFc(),
+        });
+
+        // Scan overlay sources (populated dynamically during a scan).
+        map.addSource("scan-cells", { type: "geojson", data: emptyFc() });
+        map.addSource("scan-parcels", { type: "geojson", data: emptyFc() });
+
+        // Scan cell fill (soft colors: green=passed, amber=soft-reject, red=hard-reject).
+        map.addLayer({
+          id: "scan-cells-fill",
+          type: "fill",
+          source: "scan-cells",
+          paint: {
+            "fill-color": [
+              "match",
+              ["get", "verdict"],
+              "passed", "#22c55e",
+              "soft_reject", "#f59e0b",
+              "#ef4444",
+            ],
+            "fill-opacity": 0.18,
+          },
+        });
+        map.addLayer({
+          id: "scan-cells-outline",
+          type: "line",
+          source: "scan-cells",
+          paint: {
+            "line-color": [
+              "match",
+              ["get", "verdict"],
+              "passed", "#22c55e",
+              "soft_reject", "#f59e0b",
+              "#ef4444",
+            ],
+            "line-width": 1,
+            "line-opacity": 0.55,
+          },
+        });
+
+        // Parcel engine overlay.
+        map.addLayer({
+          id: "scan-parcels-fill",
+          type: "fill",
+          source: "scan-parcels",
+          paint: {
+            "fill-color": [
+              "interpolate",
+              ["linear"],
+              ["get", "score"],
+              0, "#ef4444",
+              50, "#f59e0b",
+              80, "#22c55e",
+            ],
+            "fill-opacity": 0.3,
+          },
+        });
+        map.addLayer({
+          id: "scan-parcels-outline",
+          type: "line",
+          source: "scan-parcels",
+          paint: {
+            "line-color": "#94a3b8",
+            "line-width": 0.8,
+            "line-opacity": 0.6,
+          },
         });
 
         // Optional Mapbox satellite raster basemap (hidden by default).
@@ -470,6 +540,61 @@ export default function MapView({
       }
     }
   }, [selectedSiteId, sites]);
+
+  // Update scan-cells overlay as cells arrive during a scan.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    const src = map.getSource("scan-cells") as
+      | { setData: (d: FeatureCollection) => void }
+      | undefined;
+    if (!src) return;
+
+    if (!scanState || scanState.status === "idle") {
+      src.setData(emptyFc());
+      return;
+    }
+
+    const features: Feature[] = [];
+    for (const [cellId, cell] of scanState.cellResults) {
+      const [minLng, minLat, maxLng, maxLat] = cell.bbox;
+      features.push({
+        type: "Feature",
+        id: cellId,
+        geometry: {
+          type: "Polygon",
+          coordinates: [[
+            [minLng, minLat],
+            [maxLng, minLat],
+            [maxLng, maxLat],
+            [minLng, maxLat],
+            [minLng, minLat],
+          ]],
+        },
+        properties: { cellId, verdict: cell.verdict },
+      });
+    }
+    src.setData({ type: "FeatureCollection", features });
+  }, [scanState?.cellResults, scanState?.status]);
+
+  // Pan to current cell during scan.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    if (!scanState?.currentCellId) return;
+    const cell = scanState.cellResults.get(scanState.currentCellId);
+    if (!cell) return;
+    // Throttle: at most one camera move per 500ms.
+    const now = Date.now();
+    if (now - lastCameraMoveRef.current < 500) return;
+    lastCameraMoveRef.current = now;
+    const [minLng, minLat, maxLng, maxLat] = cell.bbox;
+    const centerLng = (minLng + maxLng) / 2;
+    const centerLat = (minLat + maxLat) / 2;
+    map.easeTo({ center: [centerLng, centerLat], zoom: Math.max(map.getZoom(), 7), duration: 400 });
+  }, [scanState?.currentCellId]);
 
   return (
     <div className="relative h-full w-full">

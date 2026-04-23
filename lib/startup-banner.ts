@@ -4,6 +4,7 @@
  */
 
 import { getPostgresPool } from "./postgres";
+import { getPostGISPool } from "./postgis";
 
 let hasLogged = false;
 
@@ -30,6 +31,7 @@ export async function logStartupBanner(): Promise<void> {
   lines.push(row("NEXT_PUBLIC_MAPTILER_KEY", mark(!!process.env.NEXT_PUBLIC_MAPTILER_KEY?.trim())));
   lines.push(row("NEXT_PUBLIC_MAPBOX_TOKEN", mark(!!process.env.NEXT_PUBLIC_MAPBOX_TOKEN?.trim())));
   lines.push(row("GOOGLE_SOLAR_API_KEY", mark(!!process.env.GOOGLE_SOLAR_API_KEY?.trim())));
+  lines.push(row("ANTHROPIC_API_KEY", mark(!!process.env.ANTHROPIC_API_KEY?.trim())));
 
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -63,6 +65,34 @@ export async function logStartupBanner(): Promise<void> {
       } catch (err) {
         const msg = err instanceof Error ? err.message : "unknown error";
         lines.push(row("DATABASE_URL", `✖ unreachable (${msg})`));
+      }
+    }
+  }
+
+  const supabaseUrl = process.env.SUPABASE_DATABASE_URL;
+  if (!supabaseUrl) {
+    lines.push(row("SUPABASE_DATABASE_URL", "✖ not configured (parcel engine disabled)"));
+  } else {
+    const spatialPool = await getPostGISPool();
+    if (!spatialPool) {
+      lines.push(row("SUPABASE_DATABASE_URL", "✖ pg driver not installed"));
+    } else {
+      try {
+        const start = Date.now();
+        await spatialPool.query("SELECT 1");
+        const latency = Date.now() - start;
+        lines.push(row("SUPABASE_DATABASE_URL", `✔ connected (${latency}ms)`));
+        try {
+          const ver = (await spatialPool.query(
+            "SELECT PostGIS_version() AS v"
+          )) as { rows: { v: string }[] };
+          lines.push(row("PostGIS version", `✔ ${ver.rows[0]?.v ?? "unknown"}`));
+        } catch {
+          lines.push(row("PostGIS version", "✖ PostGIS extension not available"));
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "unknown error";
+        lines.push(row("SUPABASE_DATABASE_URL", `✖ unreachable (${msg})`));
       }
     }
   }

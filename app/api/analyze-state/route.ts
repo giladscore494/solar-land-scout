@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runStateScan } from "@/lib/agent/run-scan";
+import { runParcelScan } from "@/lib/agent/parcel-scanner";
+import { getPostGISPool } from "@/lib/postgis";
 import type { ScanEvent } from "@/types/scan-events";
 
 export const runtime = "nodejs";
@@ -9,6 +11,7 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as {
     state_code?: string;
     language?: "en" | "he";
+    engine?: "grid" | "parcel";
   } | null;
   const stateCode = body?.state_code?.toUpperCase();
   if (!stateCode) {
@@ -25,10 +28,24 @@ export async function POST(req: NextRequest) {
 
   const acceptsSSE = req.headers.get("accept")?.includes("text/event-stream") ?? false;
 
+  // Determine which engine to use
+  const supabaseConfigured = !!process.env.SUPABASE_DATABASE_URL?.trim();
+  let engine = body?.engine;
+  if (!engine) {
+    if (supabaseConfigured) {
+      const pool = await getPostGISPool();
+      engine = pool ? "parcel" : "grid";
+    } else {
+      engine = "grid";
+    }
+  }
+
+  const runScan = engine === "parcel" ? runParcelScan : runStateScan;
+
   if (!acceptsSSE) {
     // Backward-compatible terminal JSON response
     try {
-      const result = await runStateScan(stateCode, { signal: req.signal });
+      const result = await runScan(stateCode, { signal: req.signal });
       return NextResponse.json({
         run_id: result.runId,
         status: "completed",
@@ -37,6 +54,7 @@ export async function POST(req: NextRequest) {
         sites: result.sites,
         all_candidates: result.sites,
         rejected_by: result.rejected_by,
+        engine,
         run_debug: {
           state_code: stateCode,
           total_generated: result.total,
@@ -65,7 +83,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      runStateScan(stateCode, {
+      runScan(stateCode, {
         signal: req.signal,
         onEvent: emit,
       })

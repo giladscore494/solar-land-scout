@@ -81,6 +81,10 @@ export interface CandidateSite {
   google_solar?: GoogleSolarInsights | null;
   enrichment_provenance?: EnrichmentProvenance[];
   enrichment_updated_at?: string | null;
+  // Parcel engine enrichment (optional)
+  annual_ghi_kwh_m2?: number | null;
+  contiguous_acres?: number | null;
+  slope_pct?: number | null;
 }
 
 export interface AnalysisRun {
