@@ -1,0 +1,74 @@
+import type { QueryablePool } from "@/lib/postgres";
+import { recordImportStart, recordImportComplete, recordImportError } from "./import-utils";
+
+const HIFLD_SUBSTATIONS_URL =
+  "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/Electric_Substations/FeatureServer/0/query";
+
+export async function importHifldSubstations(pool: QueryablePool): Promise<number> {
+  const importId = await recordImportStart(pool, "hifld_substations", HIFLD_SUBSTATIONS_URL);
+  let totalRows = 0;
+
+  try {
+    let offset = 0;
+    const pageSize = 1000;
+
+    while (true) {
+      const params = new URLSearchParams({
+        where: "1=1",
+        outFields: "OBJECTID,NAME,MAX_VOLT,OWNER,STATUS",
+        outSR: "4326",
+        f: "geojson",
+        resultOffset: String(offset),
+        resultRecordCount: String(pageSize),
+      });
+
+      const res = await fetch(`${HIFLD_SUBSTATIONS_URL}?${params}`, {
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!res.ok) throw new Error(`HIFLD Substations API returned ${res.status}`);
+
+      const fc = (await res.json()) as {
+        features?: Array<{
+          geometry: unknown;
+          properties: Record<string, unknown>;
+        }>;
+      };
+
+      if (!fc.features || fc.features.length === 0) break;
+
+      for (const feat of fc.features) {
+        if (!feat.geometry) continue;
+        const geomJson = JSON.stringify(feat.geometry);
+        const sourceId = String(feat.properties.OBJECTID ?? `hifld_sub_${totalRows}`);
+        const name = typeof feat.properties.NAME === "string" ? feat.properties.NAME : null;
+        const maxVolt = typeof feat.properties.MAX_VOLT === "number" ? feat.properties.MAX_VOLT : null;
+        const owner = typeof feat.properties.OWNER === "string" ? feat.properties.OWNER : null;
+        const status = typeof feat.properties.STATUS === "string" ? feat.properties.STATUS : null;
+
+        await pool.query(
+          `INSERT INTO substations (source_id, name, max_voltage_kv, owner, status, geom, imported_at)
+           VALUES ($1, $2, $3, $4, $5, ST_GeomFromGeoJSON($6), NOW())
+           ON CONFLICT (source_id) DO UPDATE
+             SET name = EXCLUDED.name,
+                 max_voltage_kv = EXCLUDED.max_voltage_kv,
+                 owner = EXCLUDED.owner,
+                 status = EXCLUDED.status,
+                 geom = EXCLUDED.geom,
+                 imported_at = NOW()`,
+          [sourceId, name, maxVolt, owner, status, geomJson]
+        );
+        totalRows++;
+      }
+
+      if (fc.features.length < pageSize) break;
+      offset += pageSize;
+    }
+
+    await recordImportComplete(pool, importId, totalRows);
+    return totalRows;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await recordImportError(pool, importId, msg);
+    throw err;
+  }
+}

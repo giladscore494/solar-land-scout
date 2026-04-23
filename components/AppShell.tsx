@@ -209,6 +209,7 @@ export default function AppShell() {
           onSelectState={handleSelectState}
           onSelectSite={handleSelectSite}
           basemap={basemap}
+          scanState={scanController.state}
         />
       </div>
 

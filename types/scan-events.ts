@@ -48,4 +48,33 @@ export type ScanEvent =
       type: "scan_error";
       message: string;
       at: string;
+    }
+  | {
+      type: "hot_zone_identified";
+      count: number;
+      stateCode: string;
+      at: string;
+    }
+  | {
+      type: "parcel_evaluated";
+      parcelId: string;
+      apn: string | null;
+      stateCode: string;
+      at: string;
+    }
+  | {
+      type: "parcel_passed";
+      parcelId: string;
+      apn: string | null;
+      score: number;
+      geojson: string;
+      stateCode: string;
+      at: string;
+    }
+  | {
+      type: "parcel_rejected";
+      parcelId: string;
+      reason: string;
+      stateCode: string;
+      at: string;
     };

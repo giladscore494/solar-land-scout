@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPostgresPool, getPostgresLoadError } from "@/lib/postgres";
+import { getPostGISPool, getPostGISLoadError } from "@/lib/postgis";
 import { ensureSchema } from "@/lib/db-schema";
 
 export const runtime = "nodejs";
@@ -49,6 +50,9 @@ export async function GET() {
     mapbox: envEntry(process.env.NEXT_PUBLIC_MAPBOX_TOKEN),
     googleSolar: envEntry(process.env.GOOGLE_SOLAR_API_KEY),
     database: { configured: !!process.env.DATABASE_URL?.trim() },
+    spatial_database: { configured: !!process.env.SUPABASE_DATABASE_URL?.trim() },
+    anthropic: envEntry(process.env.ANTHROPIC_API_KEY),
+    supabase_publishable: envEntry(process.env.SUPABASE_PUBLISHABLE_KEY),
   };
 
   // DB diagnostics
@@ -103,6 +107,62 @@ export async function GET() {
     database.error = driverErr ? "pg driver not installed" : "pg driver unavailable";
   }
 
+  // Spatial database (Supabase/PostGIS) diagnostics
+  const spatial_database: {
+    connected: boolean;
+    driver_installed: boolean;
+    driver_load_error: string | null;
+    latency_ms: number;
+    postgis_version: string | null;
+    parcels_count: number;
+    transmission_count: number;
+    error: string | null;
+  } = {
+    connected: false,
+    driver_installed: false,
+    driver_load_error: null,
+    latency_ms: 0,
+    postgis_version: null,
+    parcels_count: 0,
+    transmission_count: 0,
+    error: null,
+  };
+
+  if (env.spatial_database.configured) {
+    const spatialPool = await getPostGISPool();
+    if (spatialPool) {
+      spatial_database.driver_installed = true;
+      try {
+        const start = Date.now();
+        await spatialPool.query("SELECT 1");
+        spatial_database.connected = true;
+        spatial_database.latency_ms = Date.now() - start;
+        try {
+          const ver = (await spatialPool.query(
+            "SELECT PostGIS_Version() AS v"
+          )) as { rows: { v: string }[] };
+          spatial_database.postgis_version = ver.rows[0]?.v ?? null;
+          const parcels = (await spatialPool.query(
+            "SELECT COUNT(*)::text AS c FROM parcels"
+          )) as { rows: { c: string }[] };
+          spatial_database.parcels_count = Number(parcels.rows[0]?.c ?? 0);
+          const trans = (await spatialPool.query(
+            "SELECT COUNT(*)::text AS c FROM transmission_lines"
+          )) as { rows: { c: string }[] };
+          spatial_database.transmission_count = Number(trans.rows[0]?.c ?? 0);
+        } catch (err) {
+          spatial_database.error = err instanceof Error ? err.message : "schema not ready";
+        }
+      } catch (err) {
+        spatial_database.error = err instanceof Error ? err.message : "connection error";
+      }
+    } else {
+      const driverErr = getPostGISLoadError();
+      spatial_database.driver_load_error = driverErr;
+      spatial_database.error = driverErr ? "pg driver not installed" : "pg driver unavailable";
+    }
+  }
+
   // Enricher reachability — run in parallel under a 3s cap.
   const overall = new AbortController();
   const cap = setTimeout(() => overall.abort(), 3000);
@@ -149,6 +209,7 @@ export async function GET() {
       generated_at: new Date().toISOString(),
       env,
       database,
+      spatial_database,
       enrichers,
       build: {
         commit_sha: process.env.RAILWAY_GIT_COMMIT_SHA ?? null,
