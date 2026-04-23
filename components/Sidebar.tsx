@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type {
   AnalysisRun,
   CandidateSite,
@@ -208,6 +208,7 @@ export default function Sidebar(props: Props) {
             )}
           </>
         )}
+        <SystemStatus />
       </div>
     </div>
   );
@@ -226,6 +227,9 @@ function Filters({
   onSelectState: (code: string | null) => void;
   language: Lang;
 }) {
+  const strictOnly = filters.strict_only !== false;
+  const hideProt = filters.hide_protected !== false;
+  const hideFlood = filters.hide_flood !== false;
   return (
     <div className="space-y-3.5">
       <FieldRow label={t(language, "stateLabel")}>
@@ -261,7 +265,55 @@ function Filters({
           <option value="high">high</option>
         </select>
       </FieldRow>
+
+      {/* Hard-exclusion toggles. Implicit when strict_only=true. */}
+      <div className="space-y-1.5 pt-1">
+        <ToggleRow
+          label="Hide protected areas"
+          checked={hideProt}
+          disabled={strictOnly}
+          onChange={(v) =>
+            setFilters((f) => ({ ...f, hide_protected: v }))
+          }
+        />
+        <ToggleRow
+          label="Hide flood zones"
+          checked={hideFlood}
+          disabled={strictOnly}
+          onChange={(v) => setFilters((f) => ({ ...f, hide_flood: v }))}
+        />
+      </div>
     </div>
+  );
+}
+
+function ToggleRow({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label
+      className={
+        "flex items-center justify-between gap-3 rounded-md border border-line bg-bg-800/40 px-3 py-2 text-[12.5px] " +
+        (disabled ? "opacity-60" : "")
+      }
+    >
+      <span className="text-ink-200">{label}</span>
+      <input
+        type="checkbox"
+        className="h-4 w-4 accent-accent-solar"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+    </label>
   );
 }
 
@@ -500,5 +552,180 @@ function MiniFlag({
     >
       {label}: {state}
     </span>
+  );
+}
+
+/* ------------------------------ System Status ----------------------------- */
+
+interface HealthResponse {
+  ok: boolean;
+  env: {
+    gemini: { configured: boolean; masked: string | null };
+    nrel: { configured: boolean; masked: string | null };
+    maptiler: { configured: boolean; masked: string | null };
+    mapbox: { configured: boolean; masked: string | null };
+    googleSolar: { configured: boolean; masked: string | null };
+    database: { configured: boolean };
+  };
+  database: {
+    connected: boolean;
+    latency_ms: number;
+    schema_ready: boolean;
+    states_rows: number;
+    sites_rows: number;
+    error: string | null;
+  };
+  enrichers: Record<string, { reachable: boolean; latency_ms: number; error?: string }>;
+}
+
+function SystemStatus() {
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/health", { cache: "no-store" });
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const data = (await res.json()) as HealthResponse;
+        if (!cancelled) {
+          setHealth(data);
+          setError(null);
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "load_failed");
+      }
+    }
+    load();
+    const id = setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  const overall: "green" | "amber" | "red" = useMemo(() => {
+    if (!health) return "amber";
+    const envOk = health.env.gemini.configured && health.env.database.configured;
+    const dbOk = !health.env.database.configured || health.database.connected;
+    const probes = Object.values(health.enrichers);
+    const reachable = probes.filter((p) => p.reachable).length;
+    const ratio = probes.length > 0 ? reachable / probes.length : 1;
+    if (dbOk && envOk && ratio >= 0.75) return "green";
+    if (!dbOk || ratio < 0.4) return "red";
+    return "amber";
+  }, [health]);
+
+  const dot =
+    overall === "green"
+      ? "bg-emerald-400"
+      : overall === "red"
+      ? "bg-red-500"
+      : "bg-amber-400";
+
+  return (
+    <div className="mt-6 rounded-lg border border-line bg-bg-800/40 p-2.5">
+      <button
+        type="button"
+        onClick={() => setOpen((x) => !x)}
+        className="flex min-h-[36px] w-full items-center justify-between text-[12px] font-medium text-ink-200"
+        aria-expanded={open}
+      >
+        <span className="flex items-center gap-2">
+          <span className={"inline-block h-2 w-2 rounded-full " + dot} />
+          <span>System status</span>
+        </span>
+        <span className="text-ink-400">{open ? "▾" : "▸"}</span>
+      </button>
+      {open && (
+        <div className="mt-2 space-y-1.5 text-[11.5px]">
+          {error && <div className="text-red-300">{error}</div>}
+          {health && (
+            <>
+              <StatusRow
+                label="Gemini"
+                ok={health.env.gemini.configured}
+                detail={health.env.gemini.masked ?? undefined}
+              />
+              <StatusRow
+                label="NREL"
+                ok={health.env.nrel.configured}
+                detail={health.env.nrel.masked ?? undefined}
+              />
+              <StatusRow
+                label="MapTiler"
+                ok={health.env.maptiler.configured}
+                detail={health.env.maptiler.masked ?? undefined}
+              />
+              <StatusRow
+                label="Mapbox"
+                ok={health.env.mapbox.configured}
+                detail={health.env.mapbox.masked ?? undefined}
+              />
+              <StatusRow
+                label="Google Solar"
+                ok={health.env.googleSolar.configured}
+                detail={health.env.googleSolar.masked ?? undefined}
+              />
+              <StatusRow
+                label="PostgreSQL"
+                ok={health.database.connected}
+                detail={
+                  health.env.database.configured
+                    ? health.database.connected
+                      ? `${health.database.latency_ms}ms · ${health.database.states_rows} states / ${health.database.sites_rows} sites`
+                      : health.database.error ?? "disconnected"
+                    : "not configured"
+                }
+              />
+              <div className="mt-2 border-t border-line/70 pt-1.5 text-[10.5px] uppercase tracking-[0.14em] text-ink-400">
+                Enrichers
+              </div>
+              {Object.entries(health.enrichers).map(([name, p]) => (
+                <StatusRow
+                  key={name}
+                  label={name}
+                  ok={p.reachable}
+                  detail={p.reachable ? `${p.latency_ms}ms` : p.error ?? "unreachable"}
+                />
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusRow({
+  label,
+  ok,
+  detail,
+}: {
+  label: string;
+  ok: boolean;
+  detail?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="flex items-center gap-1.5 text-ink-200">
+        <span
+          className={
+            "inline-block h-1.5 w-1.5 rounded-full " +
+            (ok ? "bg-emerald-400" : "bg-red-500")
+          }
+          aria-hidden
+        />
+        <span className="font-mono">{label}</span>
+      </span>
+      <span
+        className="truncate font-mono text-[10.5px] text-ink-400"
+        title={detail ?? ""}
+      >
+        {ok ? "✔" : "✖"} {detail ?? ""}
+      </span>
+    </div>
   );
 }

@@ -72,7 +72,57 @@ npm run dev
 | `GEMINI_API_KEY`           | Gemini explanations                         | server |
 | `NREL_API_KEY`             | NREL solar-resource enrichment              | server |
 | `NEXT_PUBLIC_MAPTILER_KEY` | MapTiler dark vector tiles (`dataviz-dark`) | client |
-| `DATABASE_URL` | PostgreSQL connection string for persistent repository | server |
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | Mapbox satellite raster basemap toggle      | client |
+| `GOOGLE_SOLAR_API_KEY`     | Google Solar API (Tier 2 enrichment)        | server |
+| `DATABASE_URL`             | PostgreSQL connection string for persistent repository | server |
+
+All new variables are optional — the app boots and serves a deterministic
+response even when every optional key is missing. `NEXT_PUBLIC_MAPBOX_TOKEN`
+is required only to show the satellite basemap toggle; `GOOGLE_SOLAR_API_KEY`
+is required only to enable the per-site Google Solar Insights block.
+
+### Runtime diagnostics — `GET /api/health`
+
+A lightweight, unauthenticated endpoint that reports:
+
+- Which keys are configured (as masked previews only — never the raw values).
+- Whether PostgreSQL is reachable (`SELECT 1` latency + schema row counts).
+- Reachability of every Tier 1 enricher (USGS Elevation, OSM Overpass, PAD-US,
+  FEMA NFHL, NASA POWER, and Google Solar when a key is present). Each probe
+  has a 1.5 s timeout and the whole endpoint is capped at ~3 s.
+
+The Sidebar exposes a collapsible **System Status** panel that consumes this
+endpoint, refreshes every 60 s, and surfaces a single green/amber/red dot.
+
+### Tier 1 enrichment pipeline
+
+Modular, fault-tolerant enrichers live under `lib/enrichment/`. Each uses a
+2.5 s per-call timeout, a deterministic fallback, and an in-memory LRU cache
+keyed by rounded `lat,lng`. Results are also persisted to a DB cache table
+`site_enrichment_cache(site_id TEXT, source TEXT, payload JSONB, computed_at
+TIMESTAMPTZ, PRIMARY KEY (site_id, source))` for 30 days.
+
+| Enricher            | Patches                                       |
+| ------------------- | --------------------------------------------- |
+| `nasa_power`        | `solar_resource_value` (fallback for NREL)   |
+| `usgs_elevation`    | `slope_estimate` (true slope via 4 neighbours) |
+| `osm_infra`         | `distance_to_infra_estimate`, `distance_to_infra_km` |
+| `usgs_padus`        | `in_protected_area`, `protected_area_name`    |
+| `fema_flood`        | `flood_zone`, `in_flood_zone`                 |
+| `google_solar` (T2) | `google_solar.{max_array_m2, sunshine_hours_yr, carbon_offset_kg_per_mwh}` |
+
+Wiring:
+
+- `GET /api/sites?enrich=1` runs enrichment against any site whose
+  `enrichment_provenance` is empty or older than 30 days (concurrency capped
+  at 4 to respect Overpass rate limits).
+- `POST /api/enrich/run` iterates all sites in a single batch. Useful as a
+  scheduled refresh entry point.
+
+Strict-filter gates were extended: sites with `in_protected_area === true`
+or `in_flood_zone === true` are rejected. `computeSiteScore` hard-zeros those
+sites and applies a soft penalty once `distance_to_infra_km > 10`.
+
 
 If `NEXT_PUBLIC_MAPTILER_KEY` is missing, the app falls back to a tile-less dark canvas
 with the state polygons as the visual layer. It still works end-to-end.

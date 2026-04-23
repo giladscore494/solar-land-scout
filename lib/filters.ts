@@ -17,6 +17,8 @@ import { landCostLeq } from "./scoring";
 
 /** Hard pass/fail against the strict v1 thresholds. */
 export function passesStrictFilters(s: CandidateSite): boolean {
+  if (STRICT_FILTERS.exclude_protected_areas && s.in_protected_area === true) return false;
+  if (STRICT_FILTERS.exclude_flood_zones && s.in_flood_zone === true) return false;
   if (s.solar_resource_value < STRICT_FILTERS.min_solar_resource) return false;
   if (s.slope_estimate > STRICT_FILTERS.max_slope_percent) return false;
   if (s.open_land_score < STRICT_FILTERS.min_open_land_score) return false;
@@ -44,8 +46,15 @@ export function applyUserFilters(
   filters: SiteFilters
 ): CandidateSite[] {
   const strictOnly = filters.strict_only !== false; // default ON
+  const hideProtected = filters.hide_protected !== false; // default ON
+  const hideFlood = filters.hide_flood !== false; // default ON
   return sites.filter((s) => {
     if (strictOnly && !s.passes_strict_filters) return false;
+    if (!strictOnly) {
+      // When strict is OFF, these remain user-controllable toggles.
+      if (hideProtected && s.in_protected_area === true) return false;
+      if (hideFlood && s.in_flood_zone === true) return false;
+    }
     if (filters.state_code && s.state_code !== filters.state_code) return false;
     if (
       typeof filters.min_solar === "number" &&
@@ -91,6 +100,12 @@ export function parseSiteFilters(params: URLSearchParams): SiteFilters {
 
   const strict = params.get("strict_only");
   if (strict !== null) f.strict_only = strict !== "false";
+
+  const hideProt = params.get("hide_protected");
+  if (hideProt !== null) f.hide_protected = hideProt !== "false";
+
+  const hideFlood = params.get("hide_flood");
+  if (hideFlood !== null) f.hide_flood = hideFlood !== "false";
 
   return f;
 }

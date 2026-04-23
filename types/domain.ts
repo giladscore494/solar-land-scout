@@ -26,6 +26,21 @@ export type RecommendedLabel =
 export type LandCostBand = "low" | "moderate" | "elevated" | "high";
 export type InfraProximity = "near" | "moderate" | "far";
 
+export interface EnrichmentProvenance {
+  source: string;
+  at: string;
+  status: "ok" | "timeout" | "error" | "skipped";
+  latency_ms: number;
+  note?: string;
+}
+
+export interface GoogleSolarInsights {
+  max_array_m2?: number | null;
+  sunshine_hours_yr?: number | null;
+  carbon_offset_kg_per_mwh?: number | null;
+  available: boolean;
+}
+
 export interface CandidateSite {
   id: string;
   state_code: StateCode;
@@ -57,6 +72,15 @@ export interface CandidateSite {
   grid_completion_confidence?: number | null;
   gemini_debug_json?: Record<string, unknown> | null;
   created_at?: string;
+  // Tier 1 enrichment (optional/additive)
+  distance_to_infra_km?: number | null;
+  in_protected_area?: boolean;
+  protected_area_name?: string | null;
+  flood_zone?: string | null;
+  in_flood_zone?: boolean;
+  google_solar?: GoogleSolarInsights | null;
+  enrichment_provenance?: EnrichmentProvenance[];
+  enrichment_updated_at?: string | null;
 }
 
 export interface AnalysisRun {
@@ -79,6 +103,8 @@ export interface SiteFilters {
   max_slope?: number;
   max_land_cost_band?: LandCostBand;
   strict_only?: boolean;
+  hide_protected?: boolean;
+  hide_flood?: boolean;
 }
 
 export interface StatesResponse {
