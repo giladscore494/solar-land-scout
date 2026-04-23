@@ -18,7 +18,7 @@ function toRun(row: any): AnalysisRun {
 }
 
 export async function createAnalysisRun(stateCode: string, language = "en") {
-  const pool = getPostgresPool();
+  const pool = await getPostgresPool();
   if (!pool) return null;
   await ensureSchema(pool);
   const result = await pool.query(
@@ -29,7 +29,7 @@ export async function createAnalysisRun(stateCode: string, language = "en") {
 }
 
 export async function completeAnalysisRun(runId: number, status: string, notes: string, debugJson: unknown) {
-  const pool = getPostgresPool();
+  const pool = await getPostgresPool();
   if (!pool) return null;
   await ensureSchema(pool);
   const result = await pool.query(
@@ -40,7 +40,7 @@ export async function completeAnalysisRun(runId: number, status: string, notes: 
 }
 
 export async function saveCandidateSites(runId: number, sites: CandidateSite[]) {
-  const pool = getPostgresPool();
+  const pool = await getPostgresPool();
   if (!pool) return;
   await ensureSchema(pool);
   for (const s of sites) {
@@ -118,7 +118,7 @@ export async function saveCandidateSites(runId: number, sites: CandidateSite[]) 
 }
 
 export async function listAnalysisRuns(stateCode: string) {
-  const pool = getPostgresPool();
+  const pool = await getPostgresPool();
   if (!pool) return [] as AnalysisRun[];
   await ensureSchema(pool);
   const result = await pool.query(
@@ -129,7 +129,7 @@ export async function listAnalysisRuns(stateCode: string) {
 }
 
 export async function getRunDebug(runId: number) {
-  const pool = getPostgresPool();
+  const pool = await getPostgresPool();
   if (!pool) return null;
   await ensureSchema(pool);
   const result = await pool.query(
