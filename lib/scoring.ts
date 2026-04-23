@@ -18,6 +18,7 @@ import {
   LAND_COST_ORDER,
   MACRO_WEIGHTS,
   TIER_CUTOFFS,
+  FEASIBILITY_WEIGHTS,
 } from "./scoring-config";
 
 export function clamp(n: number, lo = 0, hi = 100): number {
@@ -113,6 +114,9 @@ export function landCostLeq(a: LandCostBand, b: LandCostBand): boolean {
 /**
  * Compute overall_site_score from structured fields.
  * Weights here are local to site-scoring (distinct from macro weights).
+ *
+ * Hard-zero when the site is ineligible (inside a protected area or flood zone).
+ * Soft penalty when `distance_to_infra_km > 10`.
  */
 export function computeSiteScore(
   s: Pick<
@@ -122,8 +126,17 @@ export function computeSiteScore(
     | "open_land_score"
     | "estimated_land_cost_band"
     | "distance_to_infra_estimate"
-  >
+  > &
+    Partial<
+      Pick<
+        CandidateSite,
+        "in_protected_area" | "in_flood_zone" | "distance_to_infra_km"
+      >
+    >
 ): number {
+  // Hard-zero on ineligibility.
+  if (s.in_protected_area === true || s.in_flood_zone === true) return 0;
+
   const solar = normalizeSolarGhi(s.solar_resource_value);
   const slope = normalizeSlope(s.slope_estimate);
   const openLand = clamp(s.open_land_score);
@@ -131,7 +144,13 @@ export function computeSiteScore(
   const infra = infraScoreFromBand(s.distance_to_infra_estimate);
 
   // Site-level weights: solar dominates, then slope/openland/land/infra.
-  const score =
+  let score =
     solar * 0.4 + slope * 0.15 + openLand * 0.15 + land * 0.2 + infra * 0.1;
+
+  // Soft penalty for very distant infrastructure, using feasibility infra weight.
+  if (typeof s.distance_to_infra_km === "number" && s.distance_to_infra_km > 10) {
+    const overshoot = Math.min(1, (s.distance_to_infra_km - 10) / 20);
+    score -= FEASIBILITY_WEIGHTS.infra * 100 * overshoot;
+  }
   return Math.round(clamp(score) * 10) / 10;
 }

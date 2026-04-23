@@ -2,8 +2,13 @@
 
 import { RAMP_STOPS } from "@/lib/color-ramp";
 
+interface LegendProps {
+  /** When strict_only is OFF, show the "filtered out" marker entry. */
+  showExcluded?: boolean;
+}
+
 /** Compact, dark map legend. */
-export default function Legend() {
+export default function Legend({ showExcluded = false }: LegendProps) {
   const gradient = `linear-gradient(to right, ${RAMP_STOPS.map(
     (s) => `${s.color} ${s.stop}%`
   ).join(", ")})`;
@@ -23,6 +28,12 @@ export default function Legend() {
         <span>Moderate</span>
         <span>Strong</span>
       </div>
+      {showExcluded && (
+        <div className="mt-2 flex items-center gap-2 text-[10.5px] text-ink-300">
+          <span className="inline-block h-2.5 w-2.5 rounded-full border border-red-300 bg-red-600" />
+          <span>Filtered out (protected / flood)</span>
+        </div>
+      )}
     </div>
   );
 }

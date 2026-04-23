@@ -31,7 +31,13 @@ interface MapViewProps {
   selectedSiteId: string | null;
   onSelectState: (code: string | null) => void;
   onSelectSite: (id: string | null) => void;
+  basemap?: "dark" | "satellite";
 }
+
+const MAPBOX_TOKEN =
+  typeof process !== "undefined" ? process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "" : "";
+
+let warnedMissingMapbox = false;
 
 export default function MapView({
   states,
@@ -40,6 +46,7 @@ export default function MapView({
   selectedSiteId,
   onSelectState,
   onSelectSite,
+  basemap = "dark",
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -135,6 +142,34 @@ export default function MapView({
           type: "geojson",
           data: emptyFc(),
         });
+
+        // Optional Mapbox satellite raster basemap (hidden by default).
+        if (MAPBOX_TOKEN.trim() !== "") {
+          map.addSource("mapbox-satellite", {
+            type: "raster",
+            tiles: [
+              `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/{z}/{x}/{y}?access_token=${encodeURIComponent(
+                MAPBOX_TOKEN
+              )}`,
+            ],
+            tileSize: 512,
+            attribution:
+              '© <a href="https://www.mapbox.com/about/maps/">Mapbox</a> © <a href="https://www.maxar.com/">Maxar</a>',
+          });
+          map.addLayer({
+            id: "mapbox-satellite",
+            type: "raster",
+            source: "mapbox-satellite",
+            layout: { visibility: "none" },
+            paint: { "raster-opacity": 0.95 },
+          });
+        } else if (!warnedMissingMapbox) {
+          warnedMissingMapbox = true;
+          // eslint-disable-next-line no-console
+          console.warn(
+            "[MapView] NEXT_PUBLIC_MAPBOX_TOKEN is not set — satellite basemap toggle disabled."
+          );
+        }
 
         // Base state fill (choropleth by macro score), plus hover & selected feature-states.
         map.addLayer({
@@ -238,9 +273,16 @@ export default function MapView({
               "case",
               ["boolean", ["feature-state", "selected"], false],
               "#ffe08a",
+              ["boolean", ["get", "excluded"], false],
+              "#dc2626",
               "#ffb020",
             ],
-            "circle-stroke-color": "#070a10",
+            "circle-stroke-color": [
+              "case",
+              ["boolean", ["get", "excluded"], false],
+              "#fca5a5",
+              "#070a10",
+            ],
             "circle-stroke-width": 1.5,
           },
         });
@@ -355,10 +397,25 @@ export default function MapView({
           title: s.title,
           score: s.overall_site_score,
           state_code: s.state_code,
+          excluded:
+            s.in_protected_area === true || s.in_flood_zone === true,
         },
       })),
     });
   }, [sites]);
+
+  // Toggle satellite raster + state choropleth visibility.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    const hasSat = !!map.getLayer("mapbox-satellite");
+    const satVis = basemap === "satellite" ? "visible" : "none";
+    const choroVis = basemap === "satellite" ? "none" : "visible";
+    if (hasSat) map.setLayoutProperty("mapbox-satellite", "visibility", satVis);
+    if (map.getLayer("states-fill")) {
+      map.setLayoutProperty("states-fill", "visibility", choroVis);
+    }
+  }, [basemap]);
 
   // Selection + zoom behavior.
   useEffect(() => {
@@ -422,6 +479,8 @@ export default function MapView({
     </div>
   );
 }
+
+export const mapboxTokenConfigured: boolean = MAPBOX_TOKEN.trim() !== "";
 
 /* --------------------------------- helpers --------------------------------- */
 

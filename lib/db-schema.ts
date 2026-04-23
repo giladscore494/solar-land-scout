@@ -63,6 +63,23 @@ CREATE TABLE IF NOT EXISTS candidate_sites (
 CREATE INDEX IF NOT EXISTS idx_candidate_sites_state_code ON candidate_sites(state_code);
 CREATE INDEX IF NOT EXISTS idx_candidate_sites_run_id ON candidate_sites(run_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_runs_state_code ON analysis_runs(state_code);
+
+ALTER TABLE candidate_sites ADD COLUMN IF NOT EXISTS distance_to_infra_km NUMERIC(8,3);
+ALTER TABLE candidate_sites ADD COLUMN IF NOT EXISTS in_protected_area BOOLEAN;
+ALTER TABLE candidate_sites ADD COLUMN IF NOT EXISTS protected_area_name TEXT;
+ALTER TABLE candidate_sites ADD COLUMN IF NOT EXISTS flood_zone TEXT;
+ALTER TABLE candidate_sites ADD COLUMN IF NOT EXISTS in_flood_zone BOOLEAN;
+ALTER TABLE candidate_sites ADD COLUMN IF NOT EXISTS google_solar_json JSONB;
+ALTER TABLE candidate_sites ADD COLUMN IF NOT EXISTS enrichment_provenance_json JSONB;
+ALTER TABLE candidate_sites ADD COLUMN IF NOT EXISTS enrichment_updated_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS site_enrichment_cache (
+  site_id TEXT NOT NULL,
+  source TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (site_id, source)
+);
 `;
 
 let initPromise: Promise<void> | null = null;

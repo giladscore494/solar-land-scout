@@ -1,6 +1,6 @@
 "use client";
 
-import type { CandidateSite } from "@/types/domain";
+import type { CandidateSite, EnrichmentProvenance } from "@/types/domain";
 import { useExplain } from "./StateDetail";
 
 export default function SiteDetail({
@@ -43,12 +43,34 @@ export default function SiteDetail({
         </div>
       </div>
 
+      {/* Hard-exclusion warnings (visible when strict_only is OFF) */}
+      {site.in_protected_area === true && (
+        <div className="mt-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">
+          ⚠ Inside a USGS PAD-US protected area
+          {site.protected_area_name ? ` — ${site.protected_area_name}` : ""}.
+          Filtered out of strict results.
+        </div>
+      )}
+      {site.in_flood_zone === true && (
+        <div className="mt-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">
+          ⚠ Inside FEMA high-risk flood zone
+          {site.flood_zone ? ` ${site.flood_zone}` : ""}. Filtered out of strict results.
+        </div>
+      )}
+
       {/* Metric strip */}
       <div className="mt-4 grid grid-cols-2 gap-2">
         <Metric label="Solar (GHI)" value={`${site.solar_resource_value.toFixed(1)} kWh/m²/day`} />
         <Metric label="Slope" value={`${site.slope_estimate.toFixed(1)} %`} />
         <Metric label="Land cost" value={site.estimated_land_cost_band} />
-        <Metric label="Infra proximity" value={site.distance_to_infra_estimate} />
+        <Metric
+          label="Infra proximity"
+          value={
+            typeof site.distance_to_infra_km === "number"
+              ? `${site.distance_to_infra_estimate} · ${site.distance_to_infra_km.toFixed(1)} km`
+              : site.distance_to_infra_estimate
+          }
+        />
         <Metric label="Open-land score" value={`${site.open_land_score} / 100`} />
         <Metric
           label="Strict v1"
@@ -86,6 +108,43 @@ export default function SiteDetail({
               </li>
             ))}
           </ul>
+        </Block>
+      )}
+
+      {/* Data sources — enrichment provenance */}
+      {site.enrichment_provenance && site.enrichment_provenance.length > 0 && (
+        <Block title="Data sources">
+          <div className="flex flex-wrap gap-1.5">
+            {site.enrichment_provenance.map((p, i) => (
+              <ProvenancePill key={`${p.source}-${i}`} p={p} />
+            ))}
+          </div>
+        </Block>
+      )}
+
+      {/* Google Solar Insights — only when available */}
+      {site.google_solar?.available === true && (
+        <Block title="Google Solar Insights">
+          <div className="grid grid-cols-2 gap-2">
+            {typeof site.google_solar.max_array_m2 === "number" && (
+              <Metric
+                label="Max array area"
+                value={`${Math.round(site.google_solar.max_array_m2).toLocaleString()} m²`}
+              />
+            )}
+            {typeof site.google_solar.sunshine_hours_yr === "number" && (
+              <Metric
+                label="Sunshine hours / yr"
+                value={`${Math.round(site.google_solar.sunshine_hours_yr).toLocaleString()}`}
+              />
+            )}
+            {typeof site.google_solar.carbon_offset_kg_per_mwh === "number" && (
+              <Metric
+                label="Carbon offset"
+                value={`${site.google_solar.carbon_offset_kg_per_mwh.toFixed(0)} kg/MWh`}
+              />
+            )}
+          </div>
         </Block>
       )}
 
@@ -183,4 +242,60 @@ function Block({
       {children}
     </div>
   );
+}
+
+function ProvenancePill({ p }: { p: EnrichmentProvenance }) {
+  const label =
+    {
+      nasa_power: "NASA POWER",
+      usgs_elevation: "USGS Elevation",
+      osm_infra: "OSM Overpass",
+      usgs_padus: "USGS PAD-US",
+      fema_flood: "FEMA NFHL",
+      google_solar: "Google Solar",
+    }[p.source] ?? p.source;
+
+  const icon =
+    p.status === "ok"
+      ? "✓"
+      : p.status === "skipped"
+      ? "·"
+      : p.status === "timeout"
+      ? "⧗"
+      : "✕";
+
+  const tone =
+    p.status === "ok"
+      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+      : p.status === "skipped"
+      ? "border-line bg-bg-800/60 text-ink-400"
+      : "border-amber-500/40 bg-amber-500/10 text-amber-200";
+
+  const age = formatAge(p.at);
+
+  return (
+    <span
+      title={`${p.source} · ${p.status}${p.note ? ` · ${p.note}` : ""} · ${p.latency_ms}ms`}
+      className={
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-medium " +
+        tone
+      }
+    >
+      <span>{label}</span>
+      <span className="opacity-80">{icon}</span>
+      <span className="opacity-70">{age}</span>
+    </span>
+  );
+}
+
+function formatAge(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const d = Math.floor(hr / 24);
+  return `${d}d ago`;
 }

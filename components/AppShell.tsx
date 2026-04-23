@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import MapView from "./MapView";
+import MapView, { mapboxTokenConfigured } from "./MapView";
 import Sidebar from "./Sidebar";
 import Legend from "./Legend";
 import type {
@@ -39,6 +39,8 @@ export default function AppShell() {
 
   // Mobile: panel open/closed. On large screens the panel is always visible.
   const [panelOpen, setPanelOpen] = useState(false);
+  // Basemap: dark choropleth vs Mapbox satellite raster.
+  const [basemap, setBasemap] = useState<"dark" | "satellite">("dark");
 
   useEffect(() => {
     let cancelled = false;
@@ -61,6 +63,7 @@ export default function AppShell() {
     };
   }, []);
 
+  // Include enrichment-related filter query params.
   const sitesQuery = useMemo(() => {
     const p = new URLSearchParams();
     if (selectedStateCode) p.set("state", selectedStateCode);
@@ -68,6 +71,8 @@ export default function AppShell() {
     if (typeof filters.max_slope === "number") p.set("max_slope", String(filters.max_slope));
     if (filters.max_land_cost_band) p.set("max_land_cost_band", filters.max_land_cost_band);
     if (filters.strict_only === false) p.set("strict_only", "false");
+    if (filters.hide_protected === false) p.set("hide_protected", "false");
+    if (filters.hide_flood === false) p.set("hide_flood", "false");
     return p.toString();
   }, [selectedStateCode, filters]);
 
@@ -182,8 +187,48 @@ export default function AppShell() {
           selectedSiteId={selectedSiteId}
           onSelectState={handleSelectState}
           onSelectSite={handleSelectSite}
+          basemap={basemap}
         />
       </div>
+
+      {/* Basemap toggle (top-right of the map) */}
+      {mapboxTokenConfigured && (
+        <div
+          className={
+            "pointer-events-auto absolute top-3 z-30 sm:top-5 " +
+            (isRtl ? "left-20 sm:left-24" : "right-20 sm:right-24")
+          }
+        >
+          <div className="flex overflow-hidden rounded-full border border-line bg-bg-800/85 text-[11px] backdrop-blur-md">
+            <button
+              type="button"
+              onClick={() => setBasemap("dark")}
+              className={
+                "min-h-[30px] px-3 py-1 transition " +
+                (basemap === "dark"
+                  ? "bg-bg-700 text-ink-50"
+                  : "text-ink-300 hover:text-ink-100")
+              }
+              aria-pressed={basemap === "dark"}
+            >
+              Dark
+            </button>
+            <button
+              type="button"
+              onClick={() => setBasemap("satellite")}
+              className={
+                "min-h-[30px] px-3 py-1 transition " +
+                (basemap === "satellite"
+                  ? "bg-bg-700 text-ink-50"
+                  : "text-ink-300 hover:text-ink-100")
+              }
+              aria-pressed={basemap === "satellite"}
+            >
+              Satellite
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Header chip — keeps title + language. On mobile it's compact. */}
       <header
@@ -237,7 +282,7 @@ export default function AppShell() {
         }
       >
         <div className="pointer-events-auto">
-          <Legend />
+          <Legend showExcluded={filters.strict_only === false} />
         </div>
       </div>
 

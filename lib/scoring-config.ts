@@ -28,6 +28,10 @@ export const STRICT_FILTERS = {
   acceptable_infra: ["near", "moderate"] as const,
   /** Minimum overall computed site score. */
   min_overall_site_score: 65,
+  /** Exclude sites that intersect USGS PAD-US protected areas. */
+  exclude_protected_areas: true,
+  /** Exclude sites inside FEMA SFHA (zones beginning with A or V). */
+  exclude_flood_zones: true,
 } as const;
 
 /** Ordered land-cost bands for comparisons. Index = cheaper → more expensive. */

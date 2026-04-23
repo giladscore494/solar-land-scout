@@ -5,6 +5,7 @@ import statesSeed from "@/data/us_states_macro.json";
 import sitesSeed from "@/data/candidate_sites.json";
 import { getPostgresPool } from "./postgres";
 import { ensureSchema } from "./db-schema";
+import { kickBanner } from "./startup-banner";
 
 export interface DataRepository {
   listStates(): Promise<StateMacro[]>;
@@ -410,6 +411,7 @@ class PostgresRepository implements DataRepository {
 let _repo: DataRepository | null = null;
 
 export function getRepository(): DataRepository {
+  kickBanner();
   if (!_repo) {
     _repo = new PostgresRepository();
   }
