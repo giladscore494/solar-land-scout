@@ -13,6 +13,8 @@ import { t } from "@/lib/i18n";
 import StateDetail from "./StateDetail";
 import SiteDetail from "./SiteDetail";
 import { colorForScore } from "@/lib/color-ramp";
+import type { ScanState } from "./ScanController";
+import ScanNarrativePanel from "./ScanNarrativePanel";
 
 interface Props {
   language: Lang;
@@ -36,6 +38,9 @@ interface Props {
   onSelectSite: (id: string | null) => void;
   onClearState: () => void;
   onRequestClose: () => void;
+  /** Optional: live scan state from ScanController */
+  scanState?: ScanState;
+  onCancelScan?: () => void;
 }
 
 export default function Sidebar(props: Props) {
@@ -61,6 +66,8 @@ export default function Sidebar(props: Props) {
     onSelectSite,
     onClearState,
     onRequestClose,
+    scanState,
+    onCancelScan,
   } = props;
 
   const visibleSites = sites;
@@ -143,10 +150,10 @@ export default function Sidebar(props: Props) {
             <button
               type="button"
               onClick={onRunAnalysis}
-              disabled={runStatus === "running"}
+              disabled={runStatus === "running" || scanState?.status === "scanning"}
               className="mt-4 min-h-[44px] w-full rounded-lg border border-accent-solar/60 bg-accent-solar/15 px-3 py-2.5 text-[14px] font-semibold text-ink-50 transition active:scale-[0.99] disabled:opacity-60"
             >
-              {runStatus === "running"
+              {runStatus === "running" || scanState?.status === "scanning"
                 ? t(language, "running")
                 : t(language, "runAnalysis")}
             </button>
@@ -159,6 +166,11 @@ export default function Sidebar(props: Props) {
               <div className="mt-2 text-[12px] text-red-300">
                 {runError ?? "analysis error"}
               </div>
+            )}
+
+            {/* Live scan narrative panel */}
+            {scanState && onCancelScan && scanState.status !== "idle" && (
+              <ScanNarrativePanel scanState={scanState} onCancel={onCancelScan} />
             )}
 
             <div className="mt-3 flex items-center justify-between text-[11.5px] text-ink-400">
@@ -421,8 +433,44 @@ function DebugSection({
   const [runOpen, setRunOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // Extract rejected_by tally from runDebug if present
+  const rejectedBy = runDebug?.rejected_by as Record<string, number> | null | undefined;
+  const tallyEntries = rejectedBy
+    ? Object.entries(rejectedBy)
+        .filter(([k]) => k !== "passed")
+        .sort((a, b) => b[1] - a[1])
+    : [];
+  const totalProcessed = rejectedBy
+    ? Object.values(rejectedBy).reduce((sum, v) => sum + v, 0)
+    : 0;
+
   return (
     <div className="mt-6 space-y-3">
+      {/* Rejected-by tally */}
+      {tallyEntries.length > 0 && (
+        <div className="rounded-lg border border-line bg-bg-800/40 p-2.5">
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-400">
+            Rejection Tally ({totalProcessed} cells)
+          </div>
+          <div className="space-y-1">
+            {tallyEntries.map(([key, count]) => (
+              <div key={key} className="flex items-center gap-2">
+                <span className="w-28 shrink-0 truncate text-[10.5px] text-ink-400">{key}</span>
+                <div className="flex-1 overflow-hidden rounded-full bg-bg-700">
+                  <div
+                    className="h-1 rounded-full bg-red-500/60"
+                    style={{
+                      width: `${totalProcessed > 0 ? Math.round((count / totalProcessed) * 100) : 0}%`,
+                    }}
+                  />
+                </div>
+                <span className="shrink-0 font-mono text-[10.5px] text-ink-400">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {runDebug && (
         <div className="rounded-lg border border-line bg-bg-800/40 p-2.5">
           <button
