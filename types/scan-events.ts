@@ -1,12 +1,26 @@
 import type { Geometry } from "geojson";
 import type { CandidateSite } from "./domain";
+import type { ScanDbHealthSummary } from "./db-health";
 
 export type ScanEngine = "grid" | "parcel";
+
+export interface HotZoneProgressEvent {
+  planned: number;
+  scanned: number;
+  current_bbox?: [number, number, number, number];
+  current_lat?: number;
+  current_lng?: number;
+  current_ghi?: number | null;
+  elapsed_ms: number;
+}
 
 export type ScanEvent =
   | {
       type: "scan_started";
       engine: ScanEngine;
+      requestedEngine?: ScanEngine;
+      fallbackReason?: string | null;
+      db_health?: ScanDbHealthSummary;
       stateCode: string;
       totalCells?: number;
       totalParcels?: number;
@@ -14,6 +28,7 @@ export type ScanEvent =
       passed: number;
       rejected: number;
       currentStage: string;
+      hotzone_progress?: HotZoneProgressEvent;
       bbox?: [number, number, number, number];
       at: string;
     }
@@ -50,6 +65,9 @@ export type ScanEvent =
   | {
       type: "scan_completed";
       engine?: ScanEngine;
+      requestedEngine?: ScanEngine;
+      fallbackReason?: string | null;
+      db_health?: ScanDbHealthSummary;
       runId: number | null;
       passed: number;
       total: number;
@@ -59,6 +77,9 @@ export type ScanEvent =
   | {
       type: "scan_error";
       engine?: ScanEngine;
+      requestedEngine?: ScanEngine;
+      fallbackReason?: string | null;
+      db_health?: ScanDbHealthSummary;
       message: string;
       /** The analysis stage where the error occurred, e.g. "scanning_cells" */
       stage?: string;
@@ -73,6 +94,10 @@ export type ScanEvent =
       stage: string;
       /** Human-readable description of what is happening right now */
       activity: string;
+      requestedEngine?: ScanEngine;
+      fallbackReason?: string | null;
+      db_health?: ScanDbHealthSummary;
+      hotzone_progress?: HotZoneProgressEvent;
       processed: number;
       total: number;
       elapsed_ms: number;

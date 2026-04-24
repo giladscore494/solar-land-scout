@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getPostGISPool } from "@/lib/postgis";
-import { ensureSpatialSchema } from "@/lib/postgis-schema";
+import { checkDatabaseHealth } from "@/lib/db/health";
 import { importAll } from "@/lib/importers/run-all";
 import type { DatasetKey } from "@/lib/importers/run-all";
 
@@ -36,7 +36,19 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  await ensureSpatialSchema(pool);
+  const health = await checkDatabaseHealth();
+  if (health.missing_tables.length > 0 || Object.keys(health.missing_columns).length > 0) {
+    return new Response(
+      JSON.stringify({
+        error: "spatial_schema_not_ready",
+        reason: health.reason,
+        missing_tables: health.missing_tables,
+        missing_columns: health.missing_columns,
+        hint: "Run db/migrations/001_create_parcel_scan_tables.sql before importing data.",
+      }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
+  }
 
   const datasets = (body?.datasets ?? []) as DatasetKey[];
   const dryRun = body?.dry_run === true;

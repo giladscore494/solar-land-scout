@@ -1,12 +1,13 @@
 import type { Pool as PgPool, PoolConfig } from "pg";
 import type { QueryablePool } from "./postgres";
+import { getPostgisQueryTimeoutMs, getSelectedSpatialDatabaseUrl } from "./db/spatial-config";
 
 let pool: QueryablePool | null = null;
 let loadAttempted = false;
 let loadError: string | null = null;
 
 export async function getPostGISPool(): Promise<QueryablePool | null> {
-  const databaseUrl = process.env.SUPABASE_DATABASE_URL;
+  const { url: databaseUrl } = getSelectedSpatialDatabaseUrl();
   if (!databaseUrl) return null;
   if (pool) return pool;
   if (loadAttempted) return null;
@@ -23,12 +24,15 @@ export async function getPostGISPool(): Promise<QueryablePool | null> {
 
     const useSsl =
       !databaseUrl.includes("localhost") && !databaseUrl.includes("127.0.0.1");
+    const statementTimeout = getPostgisQueryTimeoutMs();
     pool = new PoolCtor({
       connectionString: databaseUrl,
       ssl: useSsl ? { rejectUnauthorized: false } : undefined,
       max: 5,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
+      query_timeout: statementTimeout,
+      statement_timeout: statementTimeout,
     });
 
     return pool;

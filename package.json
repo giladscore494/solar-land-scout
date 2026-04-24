@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start -p ${PORT:-3000}",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:health": "npx tsx scripts/db-health.ts",
+    "db:init": "psql \"$SUPABASE_DATABASE_URL\" -f db/migrations/001_create_parcel_scan_tables.sql",
+    "db:init:check": "npx tsx scripts/db-init-check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",

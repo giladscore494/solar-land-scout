@@ -1,4 +1,5 @@
 import { getPostGISPool } from "@/lib/postgis";
+import { getMaxHotzoneCells, getNasaPowerTimeoutMs, getPostgisQueryTimeoutMs } from "@/lib/db/spatial-config";
 import { buildGridForState } from "./grid";
 import { getStateBbox } from "./state-bbox";
 import { scoreParcel } from "./parcel-scorer";
@@ -7,11 +8,15 @@ import type { ScanOptions, ScanResult } from "./run-scan";
 import { createAnalysisRun, completeAnalysisRun, saveCandidateSites } from "@/lib/analysis-runs";
 import type { CandidateSite } from "@/types/domain";
 import type { Geometry } from "geojson";
+import type { HotZoneProgressEvent } from "@/types/scan-events";
 
 // NASA POWER endpoint for GHI
 const NASA_POWER_URL = "https://power.larc.nasa.gov/api/temporal/climatology/point";
 const DAYS_PER_YEAR = 365;
 const GHI_ROUNDING_FACTOR = 10;
+const HOTZONE_CELL_DELAY_MS = 50;
+const GHI_THRESHOLD = 5.0;
+const POSTGIS_QUERY_TIMEOUT_MS = getPostgisQueryTimeoutMs();
 
 async function fetchGHI(lat: number, lng: number): Promise<number | null> {
   try {
@@ -23,7 +28,7 @@ async function fetchGHI(lat: number, lng: number): Promise<number | null> {
       format: "JSON",
     });
     const res = await fetch(`${NASA_POWER_URL}?${params}`, {
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(getNasaPowerTimeoutMs()),
     });
     if (!res.ok) return null;
     const data = (await res.json()) as {
@@ -43,25 +48,52 @@ interface HotZone {
   ghi: number;
 }
 
-async function findHotZones(stateCode: string, signal?: AbortSignal): Promise<HotZone[]> {
-  // Use coarse 25km grid to find areas with GHI >= 5.0
-  const allCells = buildGridForState(stateCode, 25);
-  const hotZones: HotZone[] = [];
-  const GHI_THRESHOLD = 5.0;
+interface HotZoneDiscovery {
+  hotZones: HotZone[];
+  failedRequests: number;
+  totalCells: number;
+}
 
-  for (const cell of allCells) {
+async function findHotZones(
+  stateCode: string,
+  signal?: AbortSignal,
+  onProgress?: (progress: HotZoneProgressEvent) => void
+): Promise<HotZoneDiscovery> {
+  const allCells = buildGridForState(stateCode, 25).slice(0, getMaxHotzoneCells());
+  const hotZones: HotZone[] = [];
+  let failedRequests = 0;
+  const started = Date.now();
+
+  onProgress?.({
+    planned: allCells.length,
+    scanned: 0,
+    elapsed_ms: 0,
+  });
+
+  for (const [index, cell] of allCells.entries()) {
     if (signal?.aborted) break;
     const centerLat = (cell.bboxDeg[1] + cell.bboxDeg[3]) / 2;
     const centerLng = (cell.bboxDeg[0] + cell.bboxDeg[2]) / 2;
     const ghi = await fetchGHI(centerLat, centerLng);
+    if (ghi === null) {
+      failedRequests++;
+    }
     if (ghi !== null && ghi >= GHI_THRESHOLD) {
       hotZones.push({ bbox: cell.bboxDeg, ghi });
     }
-    // Brief delay to avoid rate-limiting NASA POWER (50ms is sufficient).
-    await new Promise((r) => setTimeout(r, 50));
+    onProgress?.({
+      planned: allCells.length,
+      scanned: index + 1,
+      current_bbox: cell.bboxDeg,
+      current_lat: centerLat,
+      current_lng: centerLng,
+      current_ghi: ghi,
+      elapsed_ms: Date.now() - started,
+    });
+    await new Promise((r) => setTimeout(r, HOTZONE_CELL_DELAY_MS));
   }
 
-  return hotZones;
+  return { hotZones, failedRequests, totalCells: allCells.length };
 }
 
 function distanceToInfraProximity(distKm: number | null): "near" | "moderate" | "far" {
@@ -71,16 +103,35 @@ function distanceToInfraProximity(distKm: number | null): "near" | "moderate" | 
   return "far";
 }
 
+function normalizeParcelError(error: unknown): Error {
+  if (error instanceof Error && error.message.toLowerCase().includes("timeout")) {
+    return new Error(`Parcel query timed out after ${POSTGIS_QUERY_TIMEOUT_MS}ms`);
+  }
+  if (
+    error instanceof Error &&
+    "code" in error &&
+    (error as Error & { code?: string }).code === "57014"
+  ) {
+    return new Error(`Parcel query timed out after ${POSTGIS_QUERY_TIMEOUT_MS}ms`);
+  }
+  return error instanceof Error ? error : new Error("parcel_failed");
+}
+
 export async function runParcelScan(
   stateCode: string,
   opts: ScanOptions = {}
 ): Promise<ScanResult> {
-  const { signal, onEvent } = opts;
+  const { signal, onEvent, requestedEngine, fallbackReason, dbHealth } = opts;
   const emit = onEvent ?? (() => undefined);
+  const scanContext = {
+    requestedEngine,
+    fallbackReason,
+    db_health: dbHealth,
+  };
 
   const pool = await getPostGISPool();
   if (!pool) {
-    throw new Error("Parcel engine requires SUPABASE_DATABASE_URL to be configured");
+    throw new Error("Parcel engine requires a PostGIS database URL to be configured");
   }
 
   const run = await createAnalysisRun(stateCode, "en");
@@ -101,6 +152,7 @@ export async function runParcelScan(
   emit({
     type: "scan_started",
     engine: "parcel",
+    ...scanContext,
     stateCode,
     totalParcels: 0,
     processed: 0,
@@ -118,6 +170,7 @@ export async function runParcelScan(
       engine: "parcel",
       stage: currentStage,
       activity: currentActivity,
+      ...scanContext,
       processed,
       total,
       elapsed_ms: Date.now() - scanStart,
@@ -129,11 +182,37 @@ export async function runParcelScan(
     // Stage 1: Find hot zones
     currentStage = "finding_hot_zones";
     currentActivity = `Identifying high-GHI hot zones for ${stateCode} via NASA POWER`;
-    const hotZones = await findHotZones(stateCode, signal);
+    const hotZoneDiscovery = await findHotZones(stateCode, signal, (progress) => {
+      processed = progress.scanned;
+      total = progress.planned;
+      currentActivity = `Checking NASA POWER ${progress.scanned}/${progress.planned} hot-zone cells`;
+      emit({
+        type: "scan_heartbeat",
+        engine: "parcel",
+        stage: currentStage,
+        activity: currentActivity,
+        ...scanContext,
+        hotzone_progress: progress,
+        processed,
+        total,
+        elapsed_ms: Date.now() - scanStart,
+        at: new Date().toISOString(),
+      });
+    });
+    const hotZones = hotZoneDiscovery.hotZones;
+    if (hotZoneDiscovery.totalCells === 0) {
+      currentActivity = `No hot-zone cells available for ${stateCode}`;
+    } else if (hotZoneDiscovery.failedRequests === hotZoneDiscovery.totalCells) {
+      currentActivity = `NASA POWER unavailable for all ${hotZoneDiscovery.totalCells} sampled cells`;
+    } else {
+      currentActivity = `Identified ${hotZones.length} hot zone(s) from ${hotZoneDiscovery.totalCells} sampled cells`;
+    }
 
     // Stage 2: Query parcels in hot zones
     currentStage = "querying_parcels";
     currentActivity = `Querying parcels in ${hotZones.length} hot zone(s)`;
+    processed = 0;
+    total = hotZones.length;
     const parcelsById = new Map<
       number,
       {
@@ -155,6 +234,7 @@ export async function runParcelScan(
 
     for (const [index, zone] of hotZones.entries()) {
       if (signal?.aborted) break;
+      processed = index + 1;
 
       const [minLng, minLat, maxLng, maxLat] = zone.bbox;
 
@@ -194,12 +274,14 @@ export async function runParcelScan(
       currentActivity = `Collected ${parcelsById.size} unique parcels from ${index + 1}/${hotZones.length} hot zone(s)`;
     }
 
+    processed = 0;
     total = parcelsById.size;
     currentStage = "evaluating_parcels";
     currentActivity = `Evaluating 0/${total} parcels — 0 passed`;
     emit({
       type: "scan_started",
       engine: "parcel",
+      ...scanContext,
       stateCode,
       totalParcels: total,
       processed: 0,
@@ -450,7 +532,8 @@ export async function runParcelScan(
         }
       } catch (error) {
         rejected++;
-        const reason = error instanceof Error ? error.message : "parcel_failed";
+        const normalizedError = normalizeParcelError(error);
+        const reason = normalizedError.message;
         rejected_by.parcel_error = (rejected_by.parcel_error ?? 0) + 1;
         emit({
           type: "parcel_result",
@@ -513,6 +596,7 @@ export async function runParcelScan(
     emit({
       type: "scan_completed",
       engine: "parcel",
+      ...scanContext,
       runId: run?.id ?? null,
       passed: passedSites.length,
       total,
@@ -530,11 +614,10 @@ export async function runParcelScan(
     };
   } catch (error) {
     const cancelled = signal?.aborted ?? false;
+    const normalizedError = normalizeParcelError(error);
     const msg = cancelled
       ? "scan_cancelled"
-      : error instanceof Error
-      ? error.message
-      : "scan_failed";
+      : normalizedError.message;
     if (run) {
       try {
         await completeAnalysisRun(run.id, cancelled ? "cancelled" : "failed", msg, null);
@@ -545,6 +628,7 @@ export async function runParcelScan(
     emit({
       type: "scan_error",
       engine: "parcel",
+      ...scanContext,
       message: msg,
       stage: currentStage,
       cancelled,

@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runStateScan } from "@/lib/agent/run-scan";
 import { runParcelScan } from "@/lib/agent/parcel-scanner";
-import { getPostGISPool } from "@/lib/postgis";
+import {
+  checkDatabaseHealth,
+  getParcelEngineFallbackReason,
+  summarizeDbHealth,
+} from "@/lib/db/health";
 import type { ScanEvent } from "@/types/scan-events";
+import type { ScanEngine } from "@/types/scan-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,14 +33,16 @@ export async function POST(req: NextRequest) {
 
   const acceptsSSE = req.headers.get("accept")?.includes("text/event-stream") ?? false;
 
-  // Determine which engine to use
-  const supabaseConfigured = !!process.env.SUPABASE_DATABASE_URL?.trim();
-  let engine = body?.engine;
-  if (!engine) {
-    if (supabaseConfigured) {
-      const pool = await getPostGISPool();
-      engine = pool ? "parcel" : "grid";
-    } else {
+  const requestedEngine: ScanEngine = body?.engine ?? "parcel";
+  let engine: ScanEngine = requestedEngine;
+  let fallbackReason: string | null = null;
+  let dbHealth = undefined;
+
+  if (requestedEngine !== "grid") {
+    const health = await checkDatabaseHealth({ stateCode });
+    dbHealth = summarizeDbHealth(health);
+    fallbackReason = getParcelEngineFallbackReason(health);
+    if (!health.ok) {
       engine = "grid";
     }
   }
@@ -55,8 +62,14 @@ export async function POST(req: NextRequest) {
         all_candidates: result.sites,
         rejected_by: result.rejected_by,
         engine,
+        requested_engine: requestedEngine,
+        fallback_reason: fallbackReason,
+        db_health: dbHealth,
         run_debug: {
           state_code: stateCode,
+          requested_engine: requestedEngine,
+          fallback_reason: fallbackReason,
+          db_health: dbHealth,
           total_generated: result.total,
           total_passing_strict: result.passed,
           rejected_by: result.rejected_by,
@@ -86,6 +99,9 @@ export async function POST(req: NextRequest) {
       runScan(stateCode, {
         signal: req.signal,
         onEvent: emit,
+        requestedEngine,
+        fallbackReason,
+        dbHealth,
       })
         .catch((err: unknown) => {
           const cancelled = req.signal.aborted;
