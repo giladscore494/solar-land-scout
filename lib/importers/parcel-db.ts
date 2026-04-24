@@ -21,6 +21,29 @@ export interface ParcelCoverageSummary {
   engine_mode: "true_parcels" | "parcel_like_fallback" | "mixed" | "none";
 }
 
+async function relationExists(pool: QueryablePool, relationName: string): Promise<boolean> {
+  const result = (await pool.query("SELECT to_regclass($1) IS NOT NULL AS present", [relationName])) as {
+    rows: Array<{ present: boolean }>;
+  };
+  return result.rows[0]?.present ?? false;
+}
+
+async function countByState(
+  pool: QueryablePool,
+  relationName: string,
+  stateCode: string
+): Promise<number> {
+  const safeRelationName =
+    relationName === "scanner_parcels" || relationName === "parcels" ? relationName : null;
+  if (!safeRelationName) {
+    throw new Error(`Unsupported parcel relation: ${relationName}`);
+  }
+  const result = (await pool.query(`SELECT COUNT(*)::bigint::text AS count FROM ${safeRelationName} WHERE state_code = $1`, [
+    stateCode,
+  ])) as { rows: Array<{ count: string }> };
+  return Number(result.rows[0]?.count ?? 0);
+}
+
 export async function syncParcelSource(pool: QueryablePool, source: ParcelSource): Promise<void> {
   await pool.query(
     `INSERT INTO parcel_sources (
@@ -111,16 +134,8 @@ export async function detectScannerParcelRelation(
   pool: QueryablePool,
   stateCode?: string | null
 ): Promise<"scanner_parcels" | "parcels"> {
-  const exists = (await pool.query(
-    `SELECT EXISTS (
-       SELECT 1
-         FROM information_schema.views
-        WHERE table_schema = 'public'
-          AND table_name = 'scanner_parcels'
-     ) AS present`
-  )) as { rows: Array<{ present: boolean }> };
-
-  if (!exists.rows[0]?.present) {
+  const scannerExists = await relationExists(pool, "public.scanner_parcels");
+  if (!scannerExists) {
     return "parcels";
   }
 
@@ -128,16 +143,9 @@ export async function detectScannerParcelRelation(
     return "scanner_parcels";
   }
 
-  const coverage = (await pool.query(
-    `SELECT
-       (SELECT COUNT(*)::bigint::text FROM scanner_parcels WHERE state_code = $1) AS scanner_count,
-       (SELECT COUNT(*)::bigint::text FROM parcels WHERE state_code = $1) AS legacy_count`,
-    [stateCode]
-  )) as { rows: Array<{ scanner_count: string; legacy_count: string }> };
-
-  const row = coverage.rows[0];
-  const scannerCount = Number(row?.scanner_count ?? 0);
-  const legacyCount = Number(row?.legacy_count ?? 0);
+  const scannerCount = await countByState(pool, "scanner_parcels", stateCode);
+  const legacyExists = await relationExists(pool, "public.parcels");
+  const legacyCount = legacyExists ? await countByState(pool, "parcels", stateCode) : 0;
   return scannerCount > 0 || legacyCount === 0 ? "scanner_parcels" : "parcels";
 }
 
@@ -145,34 +153,47 @@ export async function getParcelCoverageSummary(
   pool: QueryablePool,
   stateCode: string
 ): Promise<ParcelCoverageSummary> {
+  const [rawExists, unifiedExists, sourceLinksExists, duplicateGroupsExists] = await Promise.all([
+    relationExists(pool, "public.raw_parcel_features"),
+    relationExists(pool, "public.parcels_unified"),
+    relationExists(pool, "public.parcel_source_links"),
+    relationExists(pool, "public.parcel_duplicate_groups"),
+  ]);
   const relation = await detectScannerParcelRelation(pool, stateCode);
+  const safeRawFrom = rawExists ? "raw_parcel_features" : "(SELECT NULL::text AS source_id, NULL::text AS state_code LIMIT 0) raw_parcel_features";
+  const safeUnifiedFrom = unifiedExists ? "parcels_unified" : "(SELECT NULL::text AS state_code, NULL::boolean AS is_true_parcel, NULL::numeric AS area_acres, NULL::bigint AS id LIMIT 0) parcels_unified";
+  const safeSourceLinksJoin = unifiedExists && sourceLinksExists
+    ? "parcel_source_links l JOIN parcels_unified u ON u.id = l.unified_parcel_id"
+    : "(SELECT NULL::text AS state_code LIMIT 0) u";
+  const safeConflictFrom = duplicateGroupsExists
+    ? "parcel_duplicate_groups g"
+    : "(SELECT NULL::text AS group_key LIMIT 0) g";
 
   const result = (await pool.query(
     `WITH source_counts AS (
        SELECT source_id, COUNT(*)::bigint::text AS count
-         FROM raw_parcel_features
+         FROM ${safeRawFrom}
         WHERE state_code = $1
-        GROUP BY source_id
+         GROUP BY source_id
      ),
      source_json AS (
        SELECT COALESCE(jsonb_object_agg(source_id, count::int), '{}'::jsonb) AS payload
          FROM source_counts
      ),
-     coverage AS (
-       SELECT
-         (SELECT COUNT(*)::bigint::text FROM raw_parcel_features WHERE state_code = $1) AS raw_features_count,
-         (SELECT COUNT(*)::bigint::text FROM parcels_unified WHERE state_code = $1) AS unified_parcels_count,
-         (SELECT COUNT(*)::bigint::text FROM parcels_unified WHERE state_code = $1 AND is_true_parcel = TRUE) AS true_parcels_count,
-         (SELECT COUNT(*)::bigint::text FROM parcels_unified WHERE state_code = $1 AND is_true_parcel = FALSE) AS plss_count,
-         (SELECT COALESCE(SUM(area_acres), 0)::text FROM parcels_unified WHERE state_code = $1) AS covered_area_acres,
-         (SELECT COUNT(*)::bigint::text
-            FROM parcel_source_links l
-            JOIN parcels_unified u ON u.id = l.unified_parcel_id
-           WHERE u.state_code = $1) AS duplicate_links_count,
-         (SELECT COUNT(*)::bigint::text
-            FROM parcel_duplicate_groups g
-           WHERE g.group_key LIKE $2) AS conflicts_count
-     )
+      coverage AS (
+        SELECT
+          (SELECT COUNT(*)::bigint::text FROM ${safeRawFrom} WHERE state_code = $1) AS raw_features_count,
+          (SELECT COUNT(*)::bigint::text FROM ${safeUnifiedFrom} WHERE state_code = $1) AS unified_parcels_count,
+          (SELECT COUNT(*)::bigint::text FROM ${safeUnifiedFrom} WHERE state_code = $1 AND is_true_parcel = TRUE) AS true_parcels_count,
+          (SELECT COUNT(*)::bigint::text FROM ${safeUnifiedFrom} WHERE state_code = $1 AND is_true_parcel = FALSE) AS plss_count,
+          (SELECT COALESCE(SUM(area_acres), 0)::text FROM ${safeUnifiedFrom} WHERE state_code = $1) AS covered_area_acres,
+          (SELECT COUNT(*)::bigint::text
+             FROM ${safeSourceLinksJoin}
+            WHERE u.state_code = $1) AS duplicate_links_count,
+          (SELECT COUNT(*)::bigint::text
+             FROM ${safeConflictFrom}
+            WHERE g.group_key LIKE $2) AS conflicts_count
+      )
      SELECT coverage.*, source_json.payload AS source_payload
        FROM coverage, source_json`,
     [stateCode, `${stateCode}:%`]

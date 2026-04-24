@@ -114,7 +114,13 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
             <div className="grid grid-cols-2 gap-2">
               <div>connected: <span className="font-mono">{toYesNo(dbHealth?.database_connected)}</span></div>
               <div>postgis: <span className="font-mono">{toYesNo(dbHealth?.postgis_available)}</span></div>
-              <div>state parcels: <span className="font-mono">{dbHealth?.parcels_for_state ?? "n/a"}</span></div>
+              <div>legacy parcels: <span className="font-mono">{dbHealth?.legacy_parcels_for_state ?? "n/a"}</span></div>
+              <div>raw imported features: <span className="font-mono">{dbHealth?.raw_features_for_state ?? "n/a"}</span></div>
+              <div>unified parcels: <span className="font-mono">{dbHealth?.unified_parcels_for_state ?? "n/a"}</span></div>
+              <div>scanner parcels: <span className="font-mono">{dbHealth?.scanner_parcels_for_state ?? "n/a"}</span></div>
+              <div>effective parcels: <span className="font-mono">{dbHealth?.effective_parcels_for_state ?? "n/a"}</span></div>
+              <div>scanner relation: <span className="font-mono">{dbHealth?.scanner_relation ?? "n/a"}</span></div>
+              <div>parcel engine usable: <span className="font-mono">{toYesNo(dbHealth?.parcel_engine_usable)}</span></div>
               <div>url env: <span className="font-mono">{dbHealth?.selected_url_env ?? "n/a"}</span></div>
             </div>
             <div className="mt-1 space-y-1 font-mono text-[10.5px] text-ink-400">
@@ -124,6 +130,11 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
               <div>blocking missing columns: {formatMissingColumns(dbHealth?.blocking_missing_columns)}</div>
               <div>optional missing columns: {formatMissingColumns(dbHealth?.optional_missing_columns)}</div>
             </div>
+            {dbHealth?.next_action_message && (
+              <div className="mt-2 rounded-md bg-sky-500/10 px-2 py-1.5 text-sky-200">
+                next action: {dbHealth.next_action_message}
+              </div>
+            )}
             {dbHealth?.reason === "PARCEL_STATE_EMPTY" && (
               <div className="mt-2 rounded-md bg-amber-500/10 px-2 py-1.5 text-amber-200">
                 Parcel engine unavailable because no parcel rows exist for {missingParcelState ?? "the requested state"}. Schema is mostly ready, but real parcel data must be imported before parcel scan can run.

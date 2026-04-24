@@ -489,6 +489,10 @@ function describeFallbackReason(reason: string): string {
       return "required parcel indexes are missing";
     case "PARCEL_STATE_EMPTY":
       return "no parcel data exists for this state";
+    case "PARCEL_UNIFY_NOT_RUN_OR_FAILED":
+      return "raw parcel features exist but unification has not produced parcels";
+    case "SCANNER_PARCELS_VIEW_EMPTY_OR_BROKEN":
+      return "scanner parcels view is empty or broken";
     default:
       return reason.toLowerCase().replaceAll("_", " ");
   }

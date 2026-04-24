@@ -51,11 +51,13 @@ export interface DbHealthResult {
   step_elapsed_ms?: Record<string, number>;
   parcel_coverage?: ParcelCoverageHealthSummary | null;
   legacy_parcels_for_state?: number | null;
+  raw_features_for_state?: number | null;
   unified_parcels_for_state?: number | null;
   scanner_parcels_for_state?: number | null;
   effective_parcels_for_state?: number | null;
   scanner_relation?: "scanner_parcels" | "parcels" | null;
   parcel_engine_usable?: boolean;
+  next_action_message?: string | null;
 }
 
 export interface ScanDbHealthSummary {
@@ -73,8 +75,10 @@ export interface ScanDbHealthSummary {
   reason: string | null;
   parcel_coverage?: ParcelCoverageHealthSummary | null;
   legacy_parcels_for_state?: number | null;
+  raw_features_for_state?: number | null;
   scanner_parcels_for_state?: number | null;
   effective_parcels_for_state?: number | null;
   scanner_relation?: "scanner_parcels" | "parcels" | null;
   parcel_engine_usable?: boolean;
+  next_action_message?: string | null;
 }
