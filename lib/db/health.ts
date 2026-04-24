@@ -156,7 +156,7 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
 
   const pool = await getPostGISPool();
   if (!pool) {
-    result.reason = getPostGISLoadError() ? "DATABASE_DRIVER_UNAVAILABLE" : "DATABASE_CONNECTION_UNAVAILABLE";
+    result.reason = getPostGISLoadError() ? "DATABASE_DRIVER_LOAD_FAILED" : "DATABASE_POOL_UNAVAILABLE";
     result.elapsed_ms = Date.now() - started;
     return result;
   }

@@ -196,7 +196,7 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
       {/* Recent debug lines */}
       {debugLog.length > 0 && (
         <div className="mb-3 rounded-md border border-line bg-bg-900/40 px-2 py-1.5">
-          <div className="mb-1 text-[10px] uppercase tracking-[0.16em] text-ink-500">last 10 scan events</div>
+          <div className="mb-1 text-[10px] uppercase tracking-[0.16em] text-ink-500">recent events</div>
           <div className="space-y-1">
             {debugLog.slice(0, 10).map((line, i) => (
               <div key={i} className="font-mono text-[10.5px] text-ink-400">

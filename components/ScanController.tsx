@@ -445,8 +445,8 @@ function describeFallbackReason(reason: string): string {
   switch (reason) {
     case "DATABASE_URL_MISSING":
       return "database URL missing";
-    case "DATABASE_DRIVER_UNAVAILABLE":
-    case "DATABASE_CONNECTION_UNAVAILABLE":
+    case "DATABASE_DRIVER_LOAD_FAILED":
+    case "DATABASE_POOL_UNAVAILABLE":
     case "DATABASE_CONNECTION_FAILED":
     case "DATABASE_CONNECTION_TIMEOUT":
       return "database connection unavailable";

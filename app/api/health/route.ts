@@ -136,7 +136,7 @@ export async function GET() {
 
   if (env.spatial_database.configured) {
     const health = await checkDatabaseHealth();
-    spatial_database.driver_installed = health.reason !== "DATABASE_DRIVER_UNAVAILABLE";
+    spatial_database.driver_installed = health.reason !== "DATABASE_DRIVER_LOAD_FAILED";
     spatial_database.connected = health.database_connected;
     spatial_database.latency_ms = health.step_elapsed_ms?.connection ?? 0;
     spatial_database.schema_ready =
@@ -145,7 +145,7 @@ export async function GET() {
     spatial_database.parcels_count = health.counts.parcels_total;
     spatial_database.transmission_count = health.counts.transmission_lines_total;
     spatial_database.error = health.ok ? null : health.reason;
-    if (health.reason === "DATABASE_DRIVER_UNAVAILABLE") {
+    if (health.reason === "DATABASE_DRIVER_LOAD_FAILED") {
       spatial_database.driver_load_error = spatial_database.error;
     }
   }
