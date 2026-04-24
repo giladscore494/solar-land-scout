@@ -26,10 +26,12 @@ export interface CellResult {
   diagnostics: GridCellDiagnostics;
 }
 
-const HARD_REJECT_SLOPE_PERCENT = 15;
-const HARD_REJECT_OPEN_LAND_PCT = 10;
-const BORDERLINE_MIN_SCORE = 40;
-const UNKNOWN_COMPONENT_SCORE = 40;
+const MAX_HARD_REJECT_SLOPE_PERCENT = 15;
+const MIN_HARD_REJECT_OPEN_LAND_PCT = 10;
+const MIN_BORDERLINE_SCORE = 40;
+// Unknown metrics get a conservative mid-low component score: enough to avoid
+// automatic hard rejection, but still penalized until real data arrives.
+const UNKNOWN_METRIC_COMPONENT_SCORE = 40;
 
 export async function processCell(
   cell: GridCell,
@@ -114,8 +116,8 @@ function evaluateCell(site: CandidateSite): GridCellDiagnostics {
 
   const score = computeGridScore(site, metrics, { solarKnown, slopeKnown, infraKnown, envKnown });
   const thresholds = {
-    max_hard_reject_slope_percent: HARD_REJECT_SLOPE_PERCENT,
-    min_hard_reject_open_land_pct: HARD_REJECT_OPEN_LAND_PCT,
+    max_hard_reject_slope_percent: MAX_HARD_REJECT_SLOPE_PERCENT,
+    min_hard_reject_open_land_pct: MIN_HARD_REJECT_OPEN_LAND_PCT,
     strict_max_slope_percent: STRICT_FILTERS.max_slope_percent,
     strict_min_open_land_pct: STRICT_FILTERS.min_open_land_score,
     strict_min_ghi_kwh_m2_day: STRICT_FILTERS.min_solar_resource,
@@ -128,10 +130,10 @@ function evaluateCell(site: CandidateSite): GridCellDiagnostics {
   if (site.in_flood_zone === true) {
     return { score, candidate_kind: "rejected", borderline: false, warnings, metrics, thresholds };
   }
-  if (metrics.mean_slope_percent !== null && metrics.mean_slope_percent > HARD_REJECT_SLOPE_PERCENT) {
+  if (metrics.mean_slope_percent !== null && metrics.mean_slope_percent > MAX_HARD_REJECT_SLOPE_PERCENT) {
     return { score, candidate_kind: "rejected", borderline: false, warnings, metrics, thresholds };
   }
-  if (metrics.open_land_pct !== null && metrics.open_land_pct < HARD_REJECT_OPEN_LAND_PCT) {
+  if (metrics.open_land_pct !== null && metrics.open_land_pct < MIN_HARD_REJECT_OPEN_LAND_PCT) {
     return { score, candidate_kind: "rejected", borderline: false, warnings, metrics, thresholds };
   }
 
@@ -152,8 +154,8 @@ function evaluateCell(site: CandidateSite): GridCellDiagnostics {
 
   return {
     score,
-    candidate_kind: score >= BORDERLINE_MIN_SCORE ? "borderline" : "rejected",
-    borderline: score >= BORDERLINE_MIN_SCORE,
+    candidate_kind: score >= MIN_BORDERLINE_SCORE ? "borderline" : "rejected",
+    borderline: score >= MIN_BORDERLINE_SCORE,
     warnings,
     metrics,
     thresholds,
@@ -165,13 +167,13 @@ function evaluationReason(site: CandidateSite, evaluation: GridCellDiagnostics):
   if (site.in_flood_zone === true) return "flood";
   if (
     evaluation.metrics.mean_slope_percent !== null &&
-    evaluation.metrics.mean_slope_percent > HARD_REJECT_SLOPE_PERCENT
+    evaluation.metrics.mean_slope_percent > MAX_HARD_REJECT_SLOPE_PERCENT
   ) {
     return "high_slope";
   }
   if (
     evaluation.metrics.open_land_pct !== null &&
-    evaluation.metrics.open_land_pct < HARD_REJECT_OPEN_LAND_PCT
+    evaluation.metrics.open_land_pct < MIN_HARD_REJECT_OPEN_LAND_PCT
   ) {
     return "low_open_land";
   }
@@ -208,14 +210,14 @@ function computeGridScore(
   known: { solarKnown: boolean; slopeKnown: boolean; infraKnown: boolean; envKnown: boolean }
 ): number {
   const solarScore =
-    metrics.ghi_kwh_m2_day !== null ? normalizeSolarGhi(metrics.ghi_kwh_m2_day) : UNKNOWN_COMPONENT_SCORE;
+    metrics.ghi_kwh_m2_day !== null ? normalizeSolarGhi(metrics.ghi_kwh_m2_day) : UNKNOWN_METRIC_COMPONENT_SCORE;
   const openLandScore =
-    metrics.open_land_pct !== null ? clamp(metrics.open_land_pct) : UNKNOWN_COMPONENT_SCORE;
+    metrics.open_land_pct !== null ? clamp(metrics.open_land_pct) : UNKNOWN_METRIC_COMPONENT_SCORE;
   const slopeScore =
     metrics.mean_slope_percent !== null
       ? normalizeSlope(metrics.mean_slope_percent)
-      : UNKNOWN_COMPONENT_SCORE;
-  const gridScore = known.infraKnown ? infraBandScore(site.distance_to_infra_estimate) : UNKNOWN_COMPONENT_SCORE;
+      : UNKNOWN_METRIC_COMPONENT_SCORE;
+  const gridScore = known.infraKnown ? infraBandScore(site.distance_to_infra_estimate) : UNKNOWN_METRIC_COMPONENT_SCORE;
   const environmentalScore =
     site.in_protected_area === true || site.in_flood_zone === true
       ? 0
@@ -252,7 +254,7 @@ function infraBandScore(band: CandidateSite["distance_to_infra_estimate"]): numb
     case "far":
       return 35;
     default:
-      return UNKNOWN_COMPONENT_SCORE;
+      return UNKNOWN_METRIC_COMPONENT_SCORE;
   }
 }
 

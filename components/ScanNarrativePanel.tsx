@@ -121,7 +121,7 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
               <div>fallback reason: {dbHealth?.reason ?? "OK"}</div>
               <div>missing tables: {joinList(dbHealth?.missing_tables)}</div>
               <div>missing indexes: {joinList(dbHealth?.missing_indexes)}</div>
-              <div>blocking missing columns: {formatMissingColumns(dbHealth?.blocking_missing_columns ?? dbHealth?.missing_columns)}</div>
+              <div>blocking missing columns: {formatMissingColumns(dbHealth?.blocking_missing_columns)}</div>
               <div>optional missing columns: {formatMissingColumns(dbHealth?.optional_missing_columns)}</div>
             </div>
             {dbHealth?.reason === "PARCEL_STATE_EMPTY" && (
@@ -303,7 +303,7 @@ function formatDistribution(value: {
   p75: number | null;
   max: number | null;
 }): string {
-  return [value.min, value.p25, value.median, value.p75, value.max].every((item) => item == null)
+  return [value.min, value.p25, value.median, value.p75, value.max].every((item) => item === null)
     ? "n/a"
     : `min ${fmt(value.min)} · p25 ${fmt(value.p25)} · median ${fmt(value.median)} · p75 ${fmt(value.p75)} · max ${fmt(value.max)}`;
 }

@@ -38,6 +38,9 @@ export interface ScanResult {
 
 const MAX_GEMINI_CALLS = 25;
 const GEMINI_BATCH_SIZE = 10;
+// Arizona currently scans as a 50x50 capped grid, so 2500 processed cells means
+// the sanity check is evaluating the full planned coverage instead of a partial run.
+const AZ_SANITY_CHECK_MIN_CELLS = 2500;
 
 export async function runStateScan(
   stateCode: string,
@@ -379,7 +382,7 @@ function buildScanSummary(args: {
   const onlySlopeOpenLandRejects =
     args.strictPassedSites === 0 &&
     (args.rejectedBy.high_slope ?? 0) + (args.rejectedBy.low_open_land ?? 0) === args.total;
-  if (args.stateCode === "AZ" && args.processed >= 2500 && onlySlopeOpenLandRejects) {
+  if (args.stateCode === "AZ" && args.processed >= AZ_SANITY_CHECK_MIN_CELLS && onlySlopeOpenLandRejects) {
     warnings.push(
       "AZ sanity warning: every grid cell was rejected only by slope/open-land. This likely indicates overly strict thresholds or a metric calculation issue. Inspect metric distributions."
     );
