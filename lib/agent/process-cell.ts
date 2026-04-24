@@ -222,11 +222,14 @@ function computeGridScore(
       : known.envKnown
       ? 100
       : 60;
-  const dataQualityScore =
-    ([known.solarKnown, known.slopeKnown, metrics.open_land_pct !== null, known.infraKnown, known.envKnown].filter(Boolean)
-      .length /
-      5) *
-    100;
+  const knownSignals = [
+    known.solarKnown,
+    known.slopeKnown,
+    metrics.open_land_pct !== null,
+    known.infraKnown,
+    known.envKnown,
+  ];
+  const dataQualityScore = (knownSignals.filter((value) => value === true).length / 5) * 100;
 
   return Math.round(
     clamp(

@@ -335,6 +335,6 @@ function fmt(value: number | null | undefined): string {
 }
 
 function extractMissingParcelState(warnings?: string[]): string | null {
-  const match = warnings?.find((warning) => warning.startsWith("No parcels found for state "))?.match(/state\\s+([A-Z]{2})$/);
+  const match = warnings?.find((warning) => warning.startsWith("No parcels found for state "))?.match(/state\s+([A-Z]{2})$/);
   return match?.[1] ?? null;
 }
