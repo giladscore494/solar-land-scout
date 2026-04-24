@@ -11,6 +11,7 @@ import { buildGridForState } from "./grid";
 import { prefilterCells } from "./prefilter";
 import { runWorkerPool } from "./worker-pool";
 import { processCell } from "./process-cell";
+import { GRID_RESEARCH_MODE_DEFAULT } from "./process-cell";
 import { getStateBbox } from "./state-bbox";
 import { createAnalysisRun, completeAnalysisRun, saveCandidateSites } from "@/lib/analysis-runs";
 import { getPostgresPool } from "@/lib/postgres";
@@ -24,6 +25,7 @@ export interface ScanOptions {
   requestedEngine?: ScanEngine;
   fallbackReason?: string | null;
   dbHealth?: ScanDbHealthSummary;
+  researchMode?: boolean;
 }
 
 export interface ScanResult {
@@ -38,6 +40,7 @@ export interface ScanResult {
 
 const MAX_GEMINI_CALLS = 25;
 const GEMINI_BATCH_SIZE = 10;
+const MAX_FALLBACK_SITES = 20;
 // Arizona currently scans as a 50x50 capped grid, so 2500 processed cells means
 // the sanity check is evaluating the full planned coverage instead of a partial run.
 const AZ_SANITY_CHECK_MIN_CELLS = 2500;
@@ -46,7 +49,15 @@ export async function runStateScan(
   stateCode: string,
   opts: ScanOptions = {}
 ): Promise<ScanResult> {
-  const { sizeKm = 10, signal, onEvent, requestedEngine, fallbackReason, dbHealth } = opts;
+  const {
+    sizeKm = 10,
+    signal,
+    onEvent,
+    requestedEngine,
+    fallbackReason,
+    dbHealth,
+    researchMode = GRID_RESEARCH_MODE_DEFAULT,
+  } = opts;
   const emit = onEvent ?? (() => undefined);
   const scanContext = {
     requestedEngine,
@@ -82,19 +93,20 @@ export async function runStateScan(
   try {
     currentStage = "building_grid";
     currentActivity = `Building ${sizeKm}km grid for ${stateCode}`;
-    emit({
-      type: "scan_started",
-      engine: "grid",
-      ...scanContext,
-      stateCode,
+      emit({
+        type: "scan_started",
+        engine: "grid",
+        ...scanContext,
+        stateCode,
       totalCells: 0,
       processed: 0,
       passed: 0,
-      rejected: 0,
-      currentStage,
-      bbox: bboxArr,
-      at: new Date().toISOString(),
-    });
+        rejected: 0,
+        currentStage,
+        bbox: bboxArr,
+        researchMode,
+        at: new Date().toISOString(),
+      });
 
     const allCells = buildGridForState(stateCode, sizeKm);
     currentActivity = `Grid built: ${allCells.length} cells`;
@@ -120,21 +132,28 @@ export async function runStateScan(
       totalCells: kept.length,
       processed: 0,
       passed: 0,
-      rejected: 0,
-      currentStage,
-      bbox: bboxArr,
-      at: new Date().toISOString(),
-    });
+        rejected: 0,
+        currentStage,
+        bbox: bboxArr,
+        researchMode,
+        at: new Date().toISOString(),
+      });
 
     const rejected_by: Record<string, number> = {};
     const hardRejectCounts: Record<string, number> = {};
     const passedSites: CandidateSite[] = [];
     const borderlineCandidates: GridCandidateExample[] = [];
+    const dataUnknownCandidates: GridCandidateExample[] = [];
     const rejectedExamples: GridRejectedExample[] = [];
+    const borderlineSites: Array<{ site: CandidateSite; score: number }> = [];
+    const dataUnknownSites: Array<{ site: CandidateSite; score: number }> = [];
     const metricSamples = {
       mean_slope_percent: [] as number[],
       open_land_pct: [] as number[],
       ghi_kwh_m2_day: [] as number[],
+      distance_to_transmission_km: [] as number[],
+      protected_area_pct: [] as number[],
+      final_score: [] as number[],
     };
     let geminiCallCount = 0;
     let lastGeminiTime = 0;
@@ -170,12 +189,7 @@ export async function runStateScan(
 
         const { site, rejectionReason, diagnostics } = result;
         const hardReject = isHardReject(site, diagnostics);
-        const verdict =
-          diagnostics.candidate_kind === "strict_pass"
-            ? "passed"
-            : hardReject
-            ? "hard_reject"
-            : "soft_reject";
+        const verdict = diagnostics.candidate_kind === "strict_pass" ? "passed" : hardReject ? "hard_reject" : "soft_reject";
 
         if (diagnostics.metrics.mean_slope_percent !== null) {
           metricSamples.mean_slope_percent.push(diagnostics.metrics.mean_slope_percent);
@@ -186,6 +200,13 @@ export async function runStateScan(
         if (diagnostics.metrics.ghi_kwh_m2_day !== null) {
           metricSamples.ghi_kwh_m2_day.push(diagnostics.metrics.ghi_kwh_m2_day);
         }
+        if (diagnostics.metrics.distance_to_transmission_km !== null) {
+          metricSamples.distance_to_transmission_km.push(diagnostics.metrics.distance_to_transmission_km);
+        }
+        if (diagnostics.metrics.protected_area_pct !== null) {
+          metricSamples.protected_area_pct.push(diagnostics.metrics.protected_area_pct);
+        }
+        metricSamples.final_score.push(diagnostics.score);
 
         const key = rejectionReason === "passed" ? "passed" : rejectionReason;
         rejected_by[key] = (rejected_by[key] ?? 0) + 1;
@@ -207,7 +228,8 @@ export async function runStateScan(
 
         if (diagnostics.candidate_kind === "strict_pass") {
           passedSites.push(site);
-        } else if (diagnostics.borderline) {
+          pushTopSite(borderlineSites, { site, score: diagnostics.score }); // harmless backup ordering
+        } else if (diagnostics.candidate_kind === "borderline_candidate") {
           borderlineCandidates.push({
             cell_id: result.cell.id,
             score: diagnostics.score,
@@ -215,6 +237,16 @@ export async function runStateScan(
             metrics: diagnostics.metrics,
             thresholds: diagnostics.thresholds,
           });
+          pushTopSite(borderlineSites, { site: { ...site, passes_strict_filters: false }, score: diagnostics.score });
+        } else if (diagnostics.candidate_kind === "data_unknown_candidate") {
+          dataUnknownCandidates.push({
+            cell_id: result.cell.id,
+            score: diagnostics.score,
+            reason: rejectionReason,
+            metrics: diagnostics.metrics,
+            thresholds: diagnostics.thresholds,
+          });
+          pushTopSite(dataUnknownSites, { site: { ...site, passes_strict_filters: false }, score: diagnostics.score });
         }
 
         if (diagnostics.candidate_kind !== "strict_pass") {
@@ -256,11 +288,18 @@ export async function runStateScan(
       await maybeEmitInsight(true);
     }
 
+    const fallbackSites =
+      passedSites.length > 0
+        ? passedSites
+        : borderlineSites.length > 0
+        ? borderlineSites.slice(0, MAX_FALLBACK_SITES).map((entry) => entry.site)
+        : dataUnknownSites.slice(0, MAX_FALLBACK_SITES).map((entry) => entry.site);
+
     currentStage = "persisting_results";
-    currentActivity = `Saving ${passedSites.length} candidate sites to database`;
-    if (run && passedSites.length > 0) {
+    currentActivity = `Saving ${fallbackSites.length} candidate sites to database`;
+    if (run && fallbackSites.length > 0) {
       try {
-        await saveCandidateSites(run.id, passedSites.map((s) => ({ ...s, run_id: run.id })));
+        await saveCandidateSites(run.id, fallbackSites.map((s) => ({ ...s, run_id: run.id })));
       } catch {
         // non-fatal
       }
@@ -273,6 +312,7 @@ export async function runStateScan(
       strictPassedSites: passedSites.length,
       hardRejectCounts,
       borderlineCandidates,
+      dataUnknownCandidates,
       rejectedExamples,
       metricSamples,
       rejectedBy: rejected_by,
@@ -308,6 +348,8 @@ export async function runStateScan(
       total,
       rejected_by: { ...rejected_by },
       scan_summary: summaryPayload,
+      sites: fallbackSites,
+      researchMode,
       at: new Date().toISOString(),
     });
 
@@ -317,7 +359,7 @@ export async function runStateScan(
       passed: passedSites.length,
       total,
       rejected_by,
-      sites: passedSites,
+      sites: fallbackSites,
       scan_summary: summaryPayload,
     };
   } catch (error) {
@@ -347,12 +389,15 @@ export async function runStateScan(
 
 function isHardReject(site: CandidateSite, diagnostics: GridCellDiagnostics): boolean {
   return (
+    diagnostics.candidate_kind === "hard_reject" ||
     site.in_protected_area === true ||
     site.in_flood_zone === true ||
     (diagnostics.metrics.mean_slope_percent !== null &&
       diagnostics.metrics.mean_slope_percent > (diagnostics.thresholds.max_hard_reject_slope_percent ?? Infinity)) ||
     (diagnostics.metrics.open_land_pct !== null &&
-      diagnostics.metrics.open_land_pct < (diagnostics.thresholds.min_hard_reject_open_land_pct ?? -Infinity))
+      diagnostics.metrics.open_land_pct < (diagnostics.thresholds.min_hard_reject_open_land_pct ?? -Infinity)) ||
+    (diagnostics.metrics.ghi_kwh_m2_day !== null &&
+      diagnostics.metrics.ghi_kwh_m2_day < (diagnostics.thresholds.min_hard_reject_ghi_kwh_m2_day ?? -Infinity))
   );
 }
 
@@ -363,15 +408,22 @@ function buildScanSummary(args: {
   strictPassedSites: number;
   hardRejectCounts: Record<string, number>;
   borderlineCandidates: GridCandidateExample[];
+  dataUnknownCandidates: GridCandidateExample[];
   rejectedExamples: GridRejectedExample[];
   metricSamples: {
     mean_slope_percent: number[];
     open_land_pct: number[];
     ghi_kwh_m2_day: number[];
+    distance_to_transmission_km: number[];
+    protected_area_pct: number[];
+    final_score: number[];
   };
   rejectedBy: Record<string, number>;
 }): GridScanSummary {
   const topBorderline = [...args.borderlineCandidates]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 20);
+  const topDataUnknown = [...args.dataUnknownCandidates]
     .sort((a, b) => b.score - a.score)
     .slice(0, 20);
   const worstRejected = [...args.rejectedExamples]
@@ -379,9 +431,9 @@ function buildScanSummary(args: {
     .slice(0, 20);
   const warnings: string[] = [];
 
-  const onlySlopeOpenLandRejects =
-    args.strictPassedSites === 0 &&
-    (args.rejectedBy.high_slope ?? 0) + (args.rejectedBy.low_open_land ?? 0) === args.total;
+  const slopeOpenLandRejectRatio =
+    args.total > 0 ? ((args.rejectedBy.high_slope ?? 0) + (args.rejectedBy.low_open_land ?? 0)) / args.total : 0;
+  const onlySlopeOpenLandRejects = args.strictPassedSites === 0 && slopeOpenLandRejectRatio === 1;
   if (args.stateCode === "AZ" && args.processed >= AZ_SANITY_CHECK_MIN_CELLS && onlySlopeOpenLandRejects) {
     warnings.push(
       "AZ sanity warning: every grid cell was rejected only by slope/open-land. This likely indicates overly strict thresholds or a metric calculation issue. Inspect metric distributions."
@@ -392,6 +444,19 @@ function buildScanSummary(args: {
       "No strict-pass sites found under current thresholds; showing best borderline candidates for calibration."
     );
   }
+  if (args.strictPassedSites === 0 && topBorderline.length === 0 && topDataUnknown.length > 0) {
+    warnings.push(
+      "No strict-pass sites found under current thresholds; showing best borderline/data-unknown candidates for calibration."
+    );
+  }
+  if (args.strictPassedSites === 0 && Object.values(args.hardRejectCounts).reduce((sum, value) => sum + value, 0) === args.total) {
+    warnings.push(
+      "All cells were hard-rejected. This likely means thresholds are too strict or metrics are being miscomputed."
+    );
+  }
+  if (slopeOpenLandRejectRatio > 0.9) {
+    warnings.push("Most cells were rejected only by slope/open-land. Inspect metric distributions and thresholds.");
+  }
 
   return {
     state_code: args.stateCode,
@@ -399,29 +464,37 @@ function buildScanSummary(args: {
     processed_cells: args.processed,
     strict_passed_sites: args.strictPassedSites,
     borderline_candidates_count: args.borderlineCandidates.length,
+    data_unknown_candidates_count: args.dataUnknownCandidates.length,
     hard_reject_counts: args.hardRejectCounts,
     metric_distribution: {
-      mean_slope_percent: summarizeDistribution(args.metricSamples.mean_slope_percent),
-      open_land_pct: summarizeDistribution(args.metricSamples.open_land_pct),
-      ghi_kwh_m2_day: summarizeDistribution(args.metricSamples.ghi_kwh_m2_day),
+      mean_slope_percent: summarizeDistribution(args.metricSamples.mean_slope_percent, args.processed),
+      open_land_pct: summarizeDistribution(args.metricSamples.open_land_pct, args.processed),
+      ghi_kwh_m2_day: summarizeDistribution(args.metricSamples.ghi_kwh_m2_day, args.processed),
+      distance_to_transmission_km: summarizeDistribution(args.metricSamples.distance_to_transmission_km, args.processed),
+      protected_area_pct: summarizeDistribution(args.metricSamples.protected_area_pct, args.processed),
+      final_score: summarizeDistribution(args.metricSamples.final_score, args.processed),
     },
     top_20_borderline_candidates: topBorderline,
+    top_20_data_unknown_candidates: topDataUnknown,
     worst_20_rejected_examples: worstRejected,
     warnings,
   };
 }
 
-function summarizeDistribution(values: number[]) {
+function summarizeDistribution(values: number[], totalCount: number) {
   if (values.length === 0) {
-    return { min: null, p25: null, median: null, p75: null, max: null };
+    return { min: null, p10: null, p25: null, median: null, p75: null, p90: null, max: null, null_count: totalCount };
   }
   const sorted = [...values].sort((a, b) => a - b);
   return {
     min: round(sorted[0]),
+    p10: round(percentile(sorted, 0.1)),
     p25: round(percentile(sorted, 0.25)),
     median: round(percentile(sorted, 0.5)),
     p75: round(percentile(sorted, 0.75)),
+    p90: round(percentile(sorted, 0.9)),
     max: round(sorted[sorted.length - 1]),
+    null_count: Math.max(0, totalCount - values.length),
   };
 }
 
@@ -450,6 +523,17 @@ function buildSummaryLine(
   )
     .map(([k, v]) => `${k}=${v}`)
     .join(", ")}`;
+}
+
+function pushTopSite(
+  collection: Array<{ site: CandidateSite; score: number }>,
+  entry: { site: CandidateSite; score: number }
+): void {
+  collection.push(entry);
+  collection.sort((a, b) => b.score - a.score);
+  if (collection.length > 50) {
+    collection.length = 50;
+  }
 }
 
 async function narrateScanBatch(

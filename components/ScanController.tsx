@@ -176,9 +176,11 @@ function reducer(state: ScanState, action: ScanAction): ScanState {
             : state.passedSites,
         debugLog: appendDebug(
           state.debugLog,
-          `grid:${action.event.cellId}=${action.event.verdict}${
-            action.event.rejectionReason ? ` (${action.event.rejectionReason})` : ""
-          }`
+          `grid:${action.event.cellId} ${action.event.verdict} ${action.event.rejectionReason} score=${fmtMetric(
+            action.event.diagnostics?.score
+          )} slope=${fmtMetric(action.event.diagnostics?.metrics.mean_slope_percent)} open_land=${fmtMetric(
+            action.event.diagnostics?.metrics.open_land_pct
+          )} ghi=${fmtMetric(action.event.diagnostics?.metrics.ghi_kwh_m2_day)}`
         ),
       };
     }
@@ -257,6 +259,7 @@ function reducer(state: ScanState, action: ScanAction): ScanState {
         progress: { processed: action.event.total, total: action.event.total },
         tally: { rejected_by: action.event.rejected_by, passed: action.event.passed },
         gridSummary: action.event.scan_summary ?? state.gridSummary,
+        passedSites: action.event.sites && action.event.sites.length > 0 ? action.event.sites : state.passedSites,
         currentStage: "done",
         activityLine: `Scan complete — ${action.event.passed} sites passed out of ${action.event.total} ${
           completedEngine === "parcel" ? "parcels" : "cells"
@@ -463,6 +466,10 @@ function handleEvent(event: ScanEvent, dispatch: React.Dispatch<ScanAction>): vo
 
 function appendDebug(lines: string[], next: string): string[] {
   return [next, ...lines].slice(0, MAX_DEBUG_LOG_SIZE);
+}
+
+function fmtMetric(value: number | null | undefined): string {
+  return typeof value === "number" ? value.toFixed(1) : "n/a";
 }
 
 function describeFallbackReason(reason: string): string {

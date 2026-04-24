@@ -8,10 +8,18 @@
     "start": "next start -p ${PORT:-3000}",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "db:migrate": "tsx scripts/db-migrate.ts",
     "db:health": "tsx scripts/db-health.ts",
     "db:repair:optional": "tsx scripts/repair-optional-schema.ts",
     "db:init": "psql \"$SUPABASE_DATABASE_URL\" -f db/migrations/001_create_parcel_scan_tables.sql",
-    "db:init:check": "tsx scripts/db-init-check.ts"
+    "db:init:check": "tsx scripts/db-init-check.ts",
+    "import:parcels:source": "tsx scripts/import-parcels.ts --source",
+    "import:parcels:az": "tsx scripts/import-parcels.ts --group az",
+    "import:parcels:statewide": "tsx scripts/import-parcels.ts --group statewide",
+    "import:parcels:plss": "tsx scripts/import-parcels.ts --source blm_natl_plss",
+    "import:parcels:all-enabled": "tsx scripts/import-parcels.ts --all-enabled",
+    "parcels:unify": "tsx scripts/unify-parcels.ts",
+    "parcels:report": "tsx scripts/parcel-source-report.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",

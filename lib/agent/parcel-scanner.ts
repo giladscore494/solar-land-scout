@@ -9,6 +9,7 @@ import { createAnalysisRun, completeAnalysisRun, saveCandidateSites } from "@/li
 import type { CandidateSite } from "@/types/domain";
 import type { Geometry } from "geojson";
 import type { HotZoneProgressEvent } from "@/types/scan-events";
+import { detectScannerParcelRelation } from "@/lib/importers/parcel-db";
 
 // NASA POWER endpoint for GHI
 const NASA_POWER_URL = "https://power.larc.nasa.gov/api/temporal/climatology/point";
@@ -139,6 +140,7 @@ export async function runParcelScan(
   const run = await createAnalysisRun(stateCode, "en");
   const bbox = getStateBbox(stateCode);
   const bboxArr: [number, number, number, number] = [bbox.minLng, bbox.minLat, bbox.maxLng, bbox.maxLat];
+  const parcelRelation = await detectScannerParcelRelation(pool, stateCode);
 
   const passedSites: CandidateSite[] = [];
   const rejected_by: Record<string, number> = {};
@@ -218,9 +220,9 @@ export async function runParcelScan(
     processed = 0;
     total = hotZones.length;
     const parcelsById = new Map<
-      number,
+      string,
       {
-        id: number;
+        id: string;
         apn: string | null;
         source: string;
         source_id: string;
@@ -248,14 +250,14 @@ export async function runParcelScan(
                 ST_AsGeoJSON(ST_SimplifyPreserveTopology(geom, 0.0001)) AS geom_json,
                 ST_X(centroid) AS lng, ST_Y(centroid) AS lat,
                 ST_Area(geom::geography) / 4046.86 AS computed_acres
-         FROM parcels
-         WHERE ST_Intersects(bbox, ST_MakeEnvelope($1, $2, $3, $4, 4326))
-           AND state_code = $5
-         LIMIT 1000`,
+         FROM ${parcelRelation}
+          WHERE ST_Intersects(bbox, ST_MakeEnvelope($1, $2, $3, $4, 4326))
+            AND state_code = $5
+          LIMIT 1000`,
         [minLng, minLat, maxLng, maxLat, stateCode]
       )) as {
         rows: Array<{
-          id: number;
+           id: string;
           apn: string | null;
           source: string;
           source_id: string;
@@ -272,7 +274,8 @@ export async function runParcelScan(
       };
 
       for (const parcel of parcelResult.rows) {
-        parcelsById.set(parcel.id, parcel);
+        const idString = String(parcel.id);
+        parcelsById.set(idString, { ...parcel, id: idString });
       }
 
       currentActivity = `Collected ${parcelsById.size} unique parcels from ${index + 1}/${hotZones.length} hot zone(s)`;
@@ -317,39 +320,39 @@ export async function runParcelScan(
         const metricsResult = (await pool.query(
           `SELECT
             -- Protected area check
-            EXISTS(
-              SELECT 1 FROM protected_areas pa
-              WHERE ST_Intersects(pa.geom, (SELECT geom FROM parcels WHERE id=$1))
-              LIMIT 1
-            ) AS in_protected_area,
-            (SELECT pa.name FROM protected_areas pa
-             WHERE ST_Intersects(pa.geom, (SELECT geom FROM parcels WHERE id=$1))
-             LIMIT 1) AS protected_area_name,
-            -- Flood zone check (SFHA only)
-            EXISTS(
-              SELECT 1 FROM flood_zones fz
+             EXISTS(
+               SELECT 1 FROM protected_areas pa
+               WHERE ST_Intersects(pa.geom, (SELECT geom FROM ${parcelRelation} WHERE id=$1))
+               LIMIT 1
+             ) AS in_protected_area,
+             (SELECT pa.name FROM protected_areas pa
+             WHERE ST_Intersects(pa.geom, (SELECT geom FROM ${parcelRelation} WHERE id=$1))
+              LIMIT 1) AS protected_area_name,
+             -- Flood zone check (SFHA only)
+             EXISTS(
+               SELECT 1 FROM flood_zones fz
+                WHERE fz.sfha = true
+                AND ST_Intersects(fz.geom, (SELECT geom FROM ${parcelRelation} WHERE id=$1))
+               LIMIT 1
+             ) AS in_flood_zone,
+             (SELECT fz.flood_zone FROM flood_zones fz
               WHERE fz.sfha = true
-                AND ST_Intersects(fz.geom, (SELECT geom FROM parcels WHERE id=$1))
-              LIMIT 1
-            ) AS in_flood_zone,
-            (SELECT fz.flood_zone FROM flood_zones fz
-             WHERE fz.sfha = true
-               AND ST_Intersects(fz.geom, (SELECT geom FROM parcels WHERE id=$1))
-             LIMIT 1) AS flood_zone_code,
-            -- Transmission distance
-            (SELECT ST_Distance(tl.geom::geography, (SELECT centroid::geography FROM parcels WHERE id=$1)) / 1000.0
-             FROM transmission_lines tl
-             ORDER BY tl.geom <-> (SELECT centroid FROM parcels WHERE id=$1)
-             LIMIT 1) AS distance_to_transmission_km,
-            (SELECT tl.voltage_kv
-             FROM transmission_lines tl
-             ORDER BY tl.geom <-> (SELECT centroid FROM parcels WHERE id=$1)
-             LIMIT 1) AS nearest_transmission_kv,
-            -- Substation distance
-            (SELECT ST_Distance(s.geom::geography, (SELECT centroid::geography FROM parcels WHERE id=$1)) / 1000.0
-             FROM substations s
-             ORDER BY s.geom <-> (SELECT centroid FROM parcels WHERE id=$1)
-             LIMIT 1) AS distance_to_substation_km`,
+               AND ST_Intersects(fz.geom, (SELECT geom FROM ${parcelRelation} WHERE id=$1))
+              LIMIT 1) AS flood_zone_code,
+             -- Transmission distance
+             (SELECT ST_Distance(tl.geom::geography, (SELECT centroid::geography FROM ${parcelRelation} WHERE id=$1)) / 1000.0
+              FROM transmission_lines tl
+              ORDER BY tl.geom <-> (SELECT centroid FROM ${parcelRelation} WHERE id=$1)
+              LIMIT 1) AS distance_to_transmission_km,
+             (SELECT tl.voltage_kv
+              FROM transmission_lines tl
+              ORDER BY tl.geom <-> (SELECT centroid FROM ${parcelRelation} WHERE id=$1)
+              LIMIT 1) AS nearest_transmission_kv,
+             -- Substation distance
+             (SELECT ST_Distance(s.geom::geography, (SELECT centroid::geography FROM ${parcelRelation} WHERE id=$1)) / 1000.0
+              FROM substations s
+              ORDER BY s.geom <-> (SELECT centroid FROM ${parcelRelation} WHERE id=$1)
+              LIMIT 1) AS distance_to_substation_km`,
           [parcel.id]
         )) as {
           rows: Array<{
@@ -397,7 +400,8 @@ export async function runParcelScan(
 
         // Save to parcel_scores
         try {
-          await pool.query(
+          if (parcelRelation === "parcels") {
+            await pool.query(
             `INSERT INTO parcel_scores (
               parcel_id, run_id, total_acres, usable_acres, contiguous_usable_acres,
               shape_regularity, mean_slope_percent, slope_stddev_percent,
@@ -412,7 +416,7 @@ export async function runParcelScan(
                   rejection_reason = EXCLUDED.rejection_reason,
                   computed_at = NOW()`,
             [
-              parcel.id,
+              Number(parcel.id),
               run?.id ?? null,
               metrics.total_acres,
               metrics.usable_acres,
@@ -434,7 +438,8 @@ export async function runParcelScan(
               scored.passes_strict_filters,
               scored.rejection_reason,
             ]
-          );
+            );
+          }
         } catch {
           // non-fatal
         }

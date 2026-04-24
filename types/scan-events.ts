@@ -31,6 +31,7 @@ export type ScanEvent =
       currentStage: string;
       hotzone_progress?: HotZoneProgressEvent;
       bbox?: [number, number, number, number];
+      researchMode?: boolean;
       at: string;
     }
   | {
@@ -75,6 +76,8 @@ export type ScanEvent =
       total: number;
       rejected_by: Record<string, number>;
       scan_summary?: GridScanSummary;
+      sites?: CandidateSite[];
+      researchMode?: boolean;
       at: string;
     }
   | {

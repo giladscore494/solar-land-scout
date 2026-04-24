@@ -1,6 +1,7 @@
 import { getPostGISLoadError, getPostGISPool } from "@/lib/postgis";
 import { getPostgisQueryTimeoutMs, getSelectedSpatialDatabaseUrl } from "./spatial-config";
 import type { DbHealthCounts, DbHealthResult, ScanDbHealthSummary } from "@/types/db-health";
+import { detectScannerParcelRelation, getParcelCoverageSummary } from "@/lib/importers/parcel-db";
 
 const REQUIRED_TABLES = [
   "parcels",
@@ -59,6 +60,8 @@ const INDEX_TARGETS: Array<{ table: RequiredTable; name: string }> = [
 const EMPTY_COUNTS: DbHealthCounts = {
   parcels_total: 0,
   parcels_for_state: null,
+  unified_parcels_total: 0,
+  unified_parcels_for_state: null,
   transmission_lines_total: 0,
   substations_total: 0,
   protected_areas_total: 0,
@@ -90,12 +93,14 @@ function makeBaseResult(stateCode?: string | null): DbHealthResult {
     counts: {
       ...EMPTY_COUNTS,
       parcels_for_state: stateCode ? 0 : null,
+      unified_parcels_for_state: stateCode ? 0 : null,
     },
     warnings: [],
     reason: null,
     elapsed_ms: 0,
     step_elapsed_ms: {},
     url_kind: null,
+    parcel_coverage: null,
   };
 }
 
@@ -176,8 +181,10 @@ export function summarizeDbHealth(result: DbHealthResult): ScanDbHealthSummary {
     optional_missing_columns: result.optional_missing_columns,
     missing_indexes: result.missing_indexes,
     parcels_for_state: result.counts.parcels_for_state,
+    unified_parcels_for_state: result.counts.unified_parcels_for_state,
     warnings: result.warnings,
     reason: result.reason,
+    parcel_coverage: result.parcel_coverage ?? null,
   };
 }
 
@@ -332,7 +339,11 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
   }
 
   result.counts = await measure(result, "counts", async () => {
-    const counts: DbHealthCounts = { ...EMPTY_COUNTS, parcels_for_state: stateCode ? 0 : null };
+    const counts: DbHealthCounts = {
+      ...EMPTY_COUNTS,
+      parcels_for_state: stateCode ? 0 : null,
+      unified_parcels_for_state: stateCode ? 0 : null,
+    };
 
     async function countTable(table: RequiredTable): Promise<number> {
       const query = (await db.query(`SELECT COUNT(*)::bigint::text AS count FROM ${tableSql(table)}`)) as {
@@ -349,6 +360,25 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
           [stateCode]
         )) as { rows: Array<{ count: string }> };
         counts.parcels_for_state = Number(query.rows[0]?.count ?? 0);
+      }
+    }
+    const unifiedExists = (await db.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = 'parcels_unified'
+       ) AS present`
+    )) as { rows: Array<{ present: boolean }> };
+    if (unifiedExists.rows[0]?.present) {
+      const unifiedTotal = (await db.query(
+        "SELECT COUNT(*)::bigint::text AS count FROM parcels_unified"
+      )) as { rows: Array<{ count: string }> };
+      counts.unified_parcels_total = Number(unifiedTotal.rows[0]?.count ?? 0);
+      if (stateCode) {
+        const query = (await db.query(
+          "SELECT COUNT(*)::bigint::text AS count FROM parcels_unified WHERE state_code = $1",
+          [stateCode]
+        )) as { rows: Array<{ count: string }> };
+        counts.unified_parcels_for_state = Number(query.rows[0]?.count ?? 0);
       }
     }
     if (existingTables.has("transmission_lines")) {
@@ -390,11 +420,21 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
     }
   });
 
-  if (result.counts.parcels_total === 0 && existingTables.has("parcels")) {
+  const scannerRelation = result.database_connected ? await detectScannerParcelRelation(db, stateCode) : "parcels";
+  const effectiveStateParcels =
+    scannerRelation === "scanner_parcels"
+      ? result.counts.unified_parcels_for_state ?? result.counts.parcels_for_state
+      : result.counts.parcels_for_state;
+  const effectiveTotalParcels =
+    scannerRelation === "scanner_parcels"
+      ? result.counts.unified_parcels_total ?? result.counts.parcels_total
+      : result.counts.parcels_total;
+
+  if (effectiveTotalParcels === 0 && existingTables.has("parcels")) {
     pushWarning(result, "parcels table is empty; parcel scans will fall back to grid mode");
   }
 
-  if (stateCode && result.counts.parcels_for_state === 0) {
+  if (stateCode && effectiveStateParcels === 0) {
     pushWarning(result, `No parcels found for state ${stateCode}`);
     if (!result.reason) {
       result.reason = "PARCEL_STATE_EMPTY";
@@ -404,17 +444,18 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
   if (
     existingTables.has("parcels") &&
     !result.reason &&
-    (!stateCode || result.counts.parcels_for_state === null || result.counts.parcels_for_state > 0)
+    (!stateCode || effectiveStateParcels === null || effectiveStateParcels > 0)
   ) {
     try {
       await measure(result, "query_sanity", async () => {
+        const relation = scannerRelation === "scanner_parcels" ? "scanner_parcels" : "parcels";
         if (stateCode) {
           await db.query(
-            "SELECT id FROM parcels WHERE state_code = $1 AND geom IS NOT NULL LIMIT 1",
+            `SELECT id FROM ${relation} WHERE state_code = $1 AND geom IS NOT NULL LIMIT 1`,
             [stateCode]
           );
         } else {
-          await db.query("SELECT id FROM parcels WHERE geom IS NOT NULL LIMIT 1");
+          await db.query(`SELECT id FROM ${relation} WHERE geom IS NOT NULL LIMIT 1`);
         }
       });
     } catch (error) {
@@ -424,6 +465,18 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
           ? `Parcel sanity query timed out after ${getPostgisQueryTimeoutMs()}ms`
           : "Parcel sanity query failed"
       );
+    }
+  }
+
+  if (stateCode) {
+    try {
+      result.parcel_coverage = await getParcelCoverageSummary(db, stateCode);
+      result.counts.parcels_for_state =
+        result.parcel_coverage.scanner_relation === "scanner_parcels"
+          ? result.parcel_coverage.unified_parcels_count
+          : result.counts.parcels_for_state;
+    } catch {
+      result.parcel_coverage = null;
     }
   }
 
