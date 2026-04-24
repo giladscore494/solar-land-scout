@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "db:health": "tsx scripts/db-health.ts",
+    "db:repair:optional": "tsx scripts/repair-optional-schema.ts",
     "db:init": "psql \"$SUPABASE_DATABASE_URL\" -f db/migrations/001_create_parcel_scan_tables.sql",
     "db:init:check": "tsx scripts/db-init-check.ts"
   },

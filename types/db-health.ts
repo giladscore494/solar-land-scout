@@ -24,6 +24,8 @@ export interface DbHealthResult {
   };
   missing_tables: string[];
   missing_columns: Record<string, string[]>;
+  blocking_missing_columns: Record<string, string[]>;
+  optional_missing_columns: Record<string, string[]>;
   missing_indexes: string[];
   counts: DbHealthCounts;
   warnings: string[];
@@ -39,6 +41,8 @@ export interface ScanDbHealthSummary {
   postgis_available: boolean;
   missing_tables: string[];
   missing_columns: Record<string, string[]>;
+  blocking_missing_columns: Record<string, string[]>;
+  optional_missing_columns: Record<string, string[]>;
   missing_indexes: string[];
   parcels_for_state: number | null;
   warnings: string[];

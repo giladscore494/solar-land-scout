@@ -90,7 +90,7 @@ export async function logStartupBanner(): Promise<void> {
         row(
           "Spatial schema ready",
           spatialHealth.missing_tables.length === 0 &&
-            Object.keys(spatialHealth.missing_columns).length === 0
+            Object.keys(spatialHealth.blocking_missing_columns).length === 0
             ? "✔ schema verified"
             : `✖ ${spatialHealth.reason ?? "schema not ready"}`
         )

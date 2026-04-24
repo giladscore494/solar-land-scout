@@ -109,13 +109,25 @@ It verifies:
 - DB URL selection (`SUPABASE_DATABASE_URL` first, `DATABASE_URL` fallback)
 - `SELECT 1` connectivity
 - `postgis_version()`
-- required parcel scan tables / columns / GiST indexes
+- required parcel scan tables / runtime columns / GiST indexes
 - row counts, state parcel counts, SRID / null-geometry warnings, and a tiny parcel query sanity check
+- optional metadata columns are reported under `optional_missing_columns` as warnings only
 
 The route never exposes credentials. It returns:
 
 - `503` when the app cannot reach a usable PostGIS database at all
-- `200` with `ok=false` for schema/data readiness issues so you can inspect missing tables, columns, indexes, and counts
+- `200` with `ok=false` for schema/data readiness issues so you can inspect blocking vs optional columns, indexes, and counts
+
+If the runtime schema is present but a state has zero parcel rows, the fallback
+reason is `PARCEL_STATE_EMPTY` instead of a column-missing error.
+
+Developer-only optional metadata repair is available without affecting normal
+scan requests:
+
+- dry run: `npm run db:repair:optional`
+- execute: `npm run db:repair:optional -- --execute`
+- API: `POST /api/admin/repair-optional-schema` with `{"dry_run":true}` or
+  `{"dry_run":false}` plus `x-admin-token: $ADMIN_IMPORT_TOKEN`
 
 ### Tier 1 enrichment pipeline
 

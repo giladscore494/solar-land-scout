@@ -7,7 +7,7 @@ interface Props {
   onCancel: () => void;
 }
 
-const MISSING_COLUMNS_PREVIEW_LIMIT = 180;
+const MISSING_COLUMNS_PREVIEW_LIMIT = 220;
 
 export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
   const {
@@ -27,22 +27,20 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
     errorMessage,
     cancelled,
     debugLog,
+    gridSummary,
+    recentRejectedCells,
   } = scanState;
 
   if (status === "idle") return null;
 
-  const pct =
-    progress.total > 0
-      ? Math.round((progress.processed / progress.total) * 100)
-      : 0;
-
+  const pct = progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
   const tallyEntries = Object.entries(tally.rejected_by)
     .filter(([k]) => k !== "passed")
     .sort((a, b) => b[1] - a[1]);
+  const missingParcelState = extractMissingParcelState(dbHealth?.warnings);
 
   return (
     <div className="mt-4 rounded-lg border border-line bg-bg-800/60 p-3 text-[12px]">
-      {/* Progress bar */}
       <div className="mb-3">
         <div className="mb-1 flex items-center justify-between text-[11px]">
           <span className="font-medium text-ink-200">
@@ -89,7 +87,6 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
         </div>
       )}
 
-      {/* Live activity line */}
       {(status === "scanning" || status === "done") && activityLine && (
         <div className="mb-2 flex items-start gap-1.5 text-[11px] text-ink-300">
           <span className="mt-px shrink-0 text-accent-solar" aria-hidden="true">⟳</span>
@@ -121,13 +118,17 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
               <div>url env: <span className="font-mono">{dbHealth?.selected_url_env ?? "n/a"}</span></div>
             </div>
             <div className="mt-1 space-y-1 font-mono text-[10.5px] text-ink-400">
+              <div>fallback reason: {dbHealth?.reason ?? "OK"}</div>
               <div>missing tables: {joinList(dbHealth?.missing_tables)}</div>
               <div>missing indexes: {joinList(dbHealth?.missing_indexes)}</div>
-              <div>reason: {dbHealth?.reason ?? "none"}</div>
-              {dbHealth && Object.keys(dbHealth.missing_columns).length > 0 && (
-                <div>missing columns: {formatMissingColumns(dbHealth.missing_columns)}</div>
-              )}
+              <div>blocking missing columns: {formatMissingColumns(dbHealth?.blocking_missing_columns ?? dbHealth?.missing_columns)}</div>
+              <div>optional missing columns: {formatMissingColumns(dbHealth?.optional_missing_columns)}</div>
             </div>
+            {dbHealth?.reason === "PARCEL_STATE_EMPTY" && (
+              <div className="mt-2 rounded-md bg-amber-500/10 px-2 py-1.5 text-amber-200">
+                Parcel engine unavailable because no parcel rows exist for {missingParcelState ?? "the requested state"}. Schema is mostly ready, but real parcel data must be imported before parcel scan can run.
+              </div>
+            )}
           </div>
 
           <div className="rounded-md border border-line/70 px-2 py-1.5">
@@ -150,6 +151,51 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
             </div>
           </div>
 
+          {gridSummary && (
+            <div className="rounded-md border border-line/70 px-2 py-1.5">
+              <div className="mb-1 text-[10px] uppercase tracking-[0.16em] text-ink-500">grid calibration</div>
+              <div className="grid grid-cols-2 gap-2 font-mono text-[10.5px]">
+                <div>strict passed: {gridSummary.strict_passed_sites}</div>
+                <div>borderline: {gridSummary.borderline_candidates_count}</div>
+                <div>cells: {gridSummary.processed_cells}/{gridSummary.total_cells}</div>
+                <div>hard rejects: {Object.values(gridSummary.hard_reject_counts).reduce((sum, value) => sum + value, 0)}</div>
+              </div>
+              <div className="mt-2 space-y-1 text-[10.5px] text-ink-400">
+                <div>slope distribution: {formatDistribution(gridSummary.metric_distribution.mean_slope_percent)}</div>
+                <div>open land distribution: {formatDistribution(gridSummary.metric_distribution.open_land_pct)}</div>
+                <div>ghi distribution: {formatDistribution(gridSummary.metric_distribution.ghi_kwh_m2_day)}</div>
+              </div>
+              {gridSummary.warnings.length > 0 && (
+                <div className="mt-2 rounded-md bg-amber-500/10 px-2 py-1.5 text-amber-200">
+                  {gridSummary.warnings.join(" · ")}
+                </div>
+              )}
+              {gridSummary.strict_passed_sites === 0 && gridSummary.top_20_borderline_candidates.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-ink-500">top borderline candidates</div>
+                  {gridSummary.top_20_borderline_candidates.slice(0, 5).map((candidate) => (
+                    <div key={candidate.cell_id} className="rounded bg-bg-900/50 px-2 py-1 font-mono text-[10.5px] text-ink-300">
+                      {candidate.cell_id} · score {candidate.score.toFixed(1)} · {candidate.reason}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {recentRejectedCells.length > 0 && (
+            <div className="rounded-md border border-line/70 px-2 py-1.5">
+              <div className="mb-1 text-[10px] uppercase tracking-[0.16em] text-ink-500">last 20 rejected cells</div>
+              <div className="space-y-1 font-mono text-[10.5px] text-ink-300">
+                {recentRejectedCells.map((entry) => (
+                  <div key={`${entry.cellId}-${entry.reason}-${entry.diagnostics.score}`} className="rounded bg-bg-900/50 px-2 py-1">
+                    {entry.cellId} · {entry.reason} · actual {formatActualMetric(entry.reason, entry.diagnostics)} · threshold {formatThreshold(entry.reason, entry.diagnostics)} · score {entry.diagnostics.score.toFixed(1)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {dbHealth?.warnings && dbHealth.warnings.length > 0 && (
             <div className="rounded-md bg-amber-500/10 px-2 py-1.5 text-amber-200">
               {dbHealth.warnings.join(" · ")}
@@ -158,12 +204,10 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
         </div>
       </details>
 
-      {/* Passed count */}
       <div className="mb-2 text-[11.5px] text-ink-300">
         <span className="font-semibold text-emerald-400">{tally.passed}</span> sites passed
       </div>
 
-      {/* Tally grid */}
       {tallyEntries.length > 0 && (
         <div className="mb-3 space-y-1">
           {tallyEntries.map(([key, count]) => (
@@ -183,7 +227,6 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
         </div>
       )}
 
-      {/* Insights */}
       {insights.length > 0 && (
         <div className="mb-3 space-y-1.5">
           {insights.map((text, i) => (
@@ -195,7 +238,6 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
         </div>
       )}
 
-      {/* Recent debug lines */}
       {debugLog.length > 0 && (
         <div className="mb-3 rounded-md border border-line bg-bg-900/40 px-2 py-1.5">
           <div className="mb-1 text-[10px] uppercase tracking-[0.16em] text-ink-500">recent events</div>
@@ -209,23 +251,19 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
         </div>
       )}
 
-      {/* Error / cancellation detail */}
       {(status === "error" || status === "cancelled") && (
         <div className="mb-2 rounded-md bg-red-500/10 px-2 py-1.5 text-[11px] text-red-300">
           {cancelled || status === "cancelled" ? (
             <span>Scan cancelled by user.</span>
           ) : (
             <span>
-              {currentStage && (
-                <span className="mr-1 font-semibold">Stage: {currentStage}.</span>
-              )}
+              {currentStage && <span className="mr-1 font-semibold">Stage: {currentStage}.</span>}
               {errorMessage}
             </span>
           )}
         </div>
       )}
 
-      {/* Cancel button */}
       {status === "scanning" && (
         <button
           type="button"
@@ -248,11 +286,55 @@ function toYesNo(value: boolean | undefined): string {
   return value ? "yes" : "no";
 }
 
-function formatMissingColumns(value: Record<string, string[]>): string {
+function formatMissingColumns(value?: Record<string, string[]>): string {
+  if (!value || Object.keys(value).length === 0) return "none";
   const formatted = Object.entries(value)
     .map(([table, cols]) => `${table}[${cols.join(", ")}]`)
     .join("; ");
   return formatted.length > MISSING_COLUMNS_PREVIEW_LIMIT
     ? `${formatted.slice(0, MISSING_COLUMNS_PREVIEW_LIMIT - 3)}...`
     : formatted;
+}
+
+function formatDistribution(value: {
+  min: number | null;
+  p25: number | null;
+  median: number | null;
+  p75: number | null;
+  max: number | null;
+}): string {
+  return [value.min, value.p25, value.median, value.p75, value.max].every((item) => item == null)
+    ? "n/a"
+    : `min ${fmt(value.min)} · p25 ${fmt(value.p25)} · median ${fmt(value.median)} · p75 ${fmt(value.p75)} · max ${fmt(value.max)}`;
+}
+
+function formatActualMetric(
+  reason: string,
+  diagnostics: {
+    metrics: { mean_slope_percent: number | null; open_land_pct: number | null; ghi_kwh_m2_day: number | null };
+  }
+): string {
+  if (reason === "high_slope") return fmt(diagnostics.metrics.mean_slope_percent);
+  if (reason === "low_open_land") return fmt(diagnostics.metrics.open_land_pct);
+  return fmt(diagnostics.metrics.ghi_kwh_m2_day);
+}
+
+function formatThreshold(
+  reason: string,
+  diagnostics: {
+    thresholds: { max_hard_reject_slope_percent?: number; min_hard_reject_open_land_pct?: number; strict_min_ghi_kwh_m2_day?: number };
+  }
+): string {
+  if (reason === "high_slope") return fmt(diagnostics.thresholds.max_hard_reject_slope_percent ?? null);
+  if (reason === "low_open_land") return fmt(diagnostics.thresholds.min_hard_reject_open_land_pct ?? null);
+  return fmt(diagnostics.thresholds.strict_min_ghi_kwh_m2_day ?? null);
+}
+
+function fmt(value: number | null | undefined): string {
+  return typeof value === "number" ? value.toFixed(1) : "n/a";
+}
+
+function extractMissingParcelState(warnings?: string[]): string | null {
+  const match = warnings?.find((warning) => warning.startsWith("No parcels found for state "))?.match(/state\\s+([A-Z]{2})$/);
+  return match?.[1] ?? null;
 }

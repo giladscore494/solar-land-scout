@@ -156,6 +156,7 @@ export default function AppShell() {
         total_generated: scanController.state.progress.total,
         total_passing_strict: scanController.state.tally.passed,
         rejected_by: scanController.state.tally.rejected_by,
+        scan_summary: scanController.state.gridSummary,
       });
       setRunStatus("complete");
       if (selectedStateCode) {
@@ -176,6 +177,7 @@ export default function AppShell() {
     scanController.state.requestedEngine,
     scanController.state.fallbackReason,
     scanController.state.dbHealth,
+    scanController.state.gridSummary,
     scanController.state.progress.total,
     scanController.state.tally,
     scanController.state.errorMessage,
