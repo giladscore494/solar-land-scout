@@ -150,6 +150,9 @@ export default function AppShell() {
       setRunDebug({
         state_code: selectedStateCode,
         engine: scanController.state.engine,
+        requested_engine: scanController.state.requestedEngine,
+        fallback_reason: scanController.state.fallbackReason,
+        db_health: scanController.state.dbHealth,
         total_generated: scanController.state.progress.total,
         total_passing_strict: scanController.state.tally.passed,
         rejected_by: scanController.state.tally.rejected_by,
@@ -167,7 +170,18 @@ export default function AppShell() {
     } else if (scanController.state.status === "scanning") {
       setRunStatus("running");
     }
-  }, [scanController.state.status, scanController.state.engine, scanController.state.progress.total, scanController.state.tally, scanController.state.errorMessage, selectedStateCode, refreshRuns]);
+  }, [
+    scanController.state.status,
+    scanController.state.engine,
+    scanController.state.requestedEngine,
+    scanController.state.fallbackReason,
+    scanController.state.dbHealth,
+    scanController.state.progress.total,
+    scanController.state.tally,
+    scanController.state.errorMessage,
+    selectedStateCode,
+    refreshRuns,
+  ]);
 
   const handleSelectState = useCallback((code: string | null) => {
     setSelectedStateCode(code);

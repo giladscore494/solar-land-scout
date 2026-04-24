@@ -75,6 +75,10 @@ npm run dev
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Mapbox satellite raster basemap toggle      | client |
 | `GOOGLE_SOLAR_API_KEY`     | Google Solar API (Tier 2 enrichment)        | server |
 | `DATABASE_URL`             | PostgreSQL connection string for persistent repository | server |
+| `SUPABASE_DATABASE_URL`    | PostGIS / Supabase connection string for parcel scans | server |
+| `MAX_HOTZONE_CELLS`        | Cap NASA POWER hot-zone samples per scan (default `150`) | server |
+| `NASA_POWER_TIMEOUT_MS`    | NASA POWER request timeout in ms (default `8000`) | server |
+| `POSTGIS_QUERY_TIMEOUT_MS` | Parcel/PostGIS query timeout in ms (default `15000`) | server |
 
 > **PostgreSQL note:** The `pg` npm package is required for DB connectivity; without it, the app silently falls back to JSON seeds.
 > It is now declared as a regular `dependencies` entry so `npm install` on a clean clone resolves it automatically.
@@ -96,6 +100,22 @@ A lightweight, unauthenticated endpoint that reports:
 
 The Sidebar exposes a collapsible **System Status** panel that consumes this
 endpoint, refreshes every 60 s, and surfaces a single green/amber/red dot.
+
+### Parcel DB diagnostics — `GET /api/db-health?state_code=TX`
+
+Use the dedicated parcel-engine health endpoint before enabling parcel scans.
+It verifies:
+
+- DB URL selection (`SUPABASE_DATABASE_URL` first, `DATABASE_URL` fallback)
+- `SELECT 1` connectivity
+- `postgis_version()`
+- required parcel scan tables / columns / GiST indexes
+- row counts, state parcel counts, SRID / null-geometry warnings, and a tiny parcel query sanity check
+
+The route never exposes credentials. It returns:
+
+- `503` when the app cannot reach a usable PostGIS database at all
+- `200` with `ok=false` for schema/data readiness issues so you can inspect missing tables, columns, indexes, and counts
 
 ### Tier 1 enrichment pipeline
 
@@ -141,6 +161,15 @@ npm run build      # production build
 npm run start      # start the built app (honors $PORT)
 npm run lint       # next lint
 npm run typecheck  # tsc --noEmit
+npm run db:health  # safe parcel DB readiness summary
+npm run db:init    # apply parcel scan migration via psql
+npm run db:init:check # verify DB init state and print migration hint when missing
+```
+
+Parcel schema migration:
+
+```bash
+psql "$SUPABASE_DATABASE_URL" -f db/migrations/001_create_parcel_scan_tables.sql
 ```
 
 ## How the scoring works
@@ -198,6 +227,31 @@ and return it from `getRepository()` — no route or UI code needs to change.
 - Schema initialization is automatic on first repository access (`lib/db-schema.ts`).
 - If `states_macro` is empty, the existing `data/us_states_macro.json` seed is imported into PostgreSQL.
 - Candidate JSON remains available as a fallback/demo source, but DB rows are preferred when present.
+
+## Parcel DB deployment checklist
+
+Pre-deploy:
+
+- Verify `DATABASE_URL` / `SUPABASE_DATABASE_URL` points to the intended spatial database
+- Prefer the Supabase transaction pooler URL when direct IPv6 connectivity is unreliable
+- Run `npm run db:health`
+- Run `db/migrations/001_create_parcel_scan_tables.sql` once
+- Confirm PostGIS, required tables, required columns, and GiST indexes exist
+- Confirm the target state has parcel data before expecting parcel-engine scans
+
+Deploy:
+
+- Set the DB env vars in the hosting provider
+- Do not log raw database credentials
+- Do not mutate parcel schema during normal scan requests
+
+Post-deploy:
+
+- Open `/api/db-health?state_code=TX`
+- Confirm `ok=true` or inspect the returned fallback reason
+- Run one grid scan and confirm progress appears within 1–2 seconds
+- Run one parcel scan only after parcel data exists for that state
+- Confirm early hot-zone progress events appear and every scan ends with `scan_completed` or `scan_error`
 
 ## Deploying to Railway
 

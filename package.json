@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start -p ${PORT:-3000}",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:health": "tsx scripts/db-health.ts",
+    "db:init": "psql \"$SUPABASE_DATABASE_URL\" -f db/migrations/001_create_parcel_scan_tables.sql",
+    "db:init:check": "tsx scripts/db-init-check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
@@ -33,6 +36,7 @@
     "eslint-config-next": "15.5.15",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
+    "tsx": "^4.21.0",
     "typescript": "^5.6.2"
   },
   "engines": {

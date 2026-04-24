@@ -41,7 +41,7 @@ findHotZones()   (25 km grid × NASA POWER GHI)
 
 ## Spatial Database Schema
 
-Managed by `lib/postgis-schema.ts`. Eight tables:
+Managed by `db/migrations/001_create_parcel_scan_tables.sql`. Core parcel-scan tables:
 
 | Table | Contents |
 |---|---|
@@ -130,8 +130,15 @@ The `POST /api/analyze-state` endpoint auto-selects the engine:
 // Force grid engine (default when Supabase not configured)
 { "state_code": "AZ", "engine": "grid" }
 
-// Auto-detect: uses parcel engine if SUPABASE_DATABASE_URL is set
+// Auto-detect: prefers parcel engine only when DB health checks pass
 { "state_code": "AZ" }
+```
+
+Before relying on parcel scans, check:
+
+```bash
+npm run db:health
+curl http://localhost:3000/api/db-health?state_code=AZ
 ```
 
 ## Adding a County Importer

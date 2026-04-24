@@ -4,9 +4,9 @@
  */
 
 import { getPostgresPool } from "./postgres";
-import { getPostGISPool } from "./postgis";
 import { ensureSchema } from "./db-schema";
-import { ensureSpatialSchema } from "./postgis-schema";
+import { checkDatabaseHealth } from "./db/health";
+import { getSelectedSpatialDatabaseUrl } from "./db/spatial-config";
 
 let hasLogged = false;
 
@@ -74,38 +74,40 @@ export async function logStartupBanner(): Promise<void> {
     }
   }
 
-  const supabaseUrl = process.env.SUPABASE_DATABASE_URL;
-  if (!supabaseUrl) {
+  const spatialSelection = getSelectedSpatialDatabaseUrl();
+  if (!spatialSelection.url) {
     lines.push(row("SUPABASE_DATABASE_URL", "✖ not configured (parcel engine disabled)"));
   } else {
-    const spatialPool = await getPostGISPool();
-    if (!spatialPool) {
-      lines.push(row("SUPABASE_DATABASE_URL", "✖ pg driver not installed"));
+    const spatialHealth = await checkDatabaseHealth();
+    if (spatialHealth.database_connected) {
+      lines.push(
+        row(
+          spatialHealth.selected_url_env ?? "SPATIAL_DATABASE_URL",
+          `✔ connected (${spatialHealth.step_elapsed_ms?.connection ?? 0}ms)`
+        )
+      );
+      lines.push(
+        row(
+          "Spatial schema ready",
+          spatialHealth.missing_tables.length === 0 &&
+            Object.keys(spatialHealth.missing_columns).length === 0
+            ? "✔ schema verified"
+            : `✖ ${spatialHealth.reason ?? "schema not ready"}`
+        )
+      );
+      lines.push(
+        row(
+          "PostGIS",
+          spatialHealth.postgis_available ? "✔ available" : "✖ extension unavailable"
+        )
+      );
     } else {
-      try {
-        const start = Date.now();
-        await spatialPool.query("SELECT 1");
-        const latency = Date.now() - start;
-        lines.push(row("SUPABASE_DATABASE_URL", `✔ connected (${latency}ms)`));
-        try {
-          await ensureSpatialSchema(spatialPool);
-          lines.push(row("Spatial schema ready", "✔ tables initialised"));
-        } catch (schemaErr) {
-          const schemaMsg = schemaErr instanceof Error ? schemaErr.message : "schema error";
-          lines.push(row("Spatial schema ready", `✖ ${schemaMsg}`));
-        }
-        try {
-          const ver = (await spatialPool.query(
-            "SELECT PostGIS_version() AS v"
-          )) as { rows: { v: string }[] };
-          lines.push(row("PostGIS version", `✔ ${ver.rows[0]?.v ?? "unknown"}`));
-        } catch {
-          lines.push(row("PostGIS version", "✖ PostGIS extension not available"));
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "unknown error";
-        lines.push(row("SUPABASE_DATABASE_URL", `✖ unreachable (${msg})`));
-      }
+      lines.push(
+        row(
+          spatialHealth.selected_url_env ?? "SPATIAL_DATABASE_URL",
+          `✖ unreachable (${spatialHealth.reason ?? "unknown error"})`
+        )
+      );
     }
   }
 

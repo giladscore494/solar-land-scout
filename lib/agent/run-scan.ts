@@ -1,5 +1,6 @@
 import type { CandidateSite } from "@/types/domain";
-import type { ScanEvent } from "@/types/scan-events";
+import type { ScanEvent, ScanEngine } from "@/types/scan-events";
+import type { ScanDbHealthSummary } from "@/types/db-health";
 import { buildGridForState } from "./grid";
 import { prefilterCells } from "./prefilter";
 import { runWorkerPool } from "./worker-pool";
@@ -15,6 +16,9 @@ export interface ScanOptions {
   maxCells?: number;
   signal?: AbortSignal;
   onEvent?: (e: ScanEvent) => void;
+  requestedEngine?: ScanEngine;
+  fallbackReason?: string | null;
+  dbHealth?: ScanDbHealthSummary;
 }
 
 export interface ScanResult {
@@ -33,8 +37,13 @@ export async function runStateScan(
   stateCode: string,
   opts: ScanOptions = {}
 ): Promise<ScanResult> {
-  const { sizeKm = 10, signal, onEvent } = opts;
+  const { sizeKm = 10, signal, onEvent, requestedEngine, fallbackReason, dbHealth } = opts;
   const emit = onEvent ?? (() => undefined);
+  const scanContext = {
+    requestedEngine,
+    fallbackReason,
+    db_health: dbHealth,
+  };
 
   // 1. Create analysis run
   const run = await createAnalysisRun(stateCode, "en");
@@ -56,6 +65,7 @@ export async function runStateScan(
       engine: "grid",
       stage: currentStage,
       activity: currentActivity,
+      ...scanContext,
       processed,
       total,
       elapsed_ms: Date.now() - scanStart,
@@ -70,6 +80,7 @@ export async function runStateScan(
     emit({
       type: "scan_started",
       engine: "grid",
+      ...scanContext,
       stateCode,
       totalCells: 0,
       processed: 0,
@@ -101,6 +112,7 @@ export async function runStateScan(
     emit({
       type: "scan_started",
       engine: "grid",
+      ...scanContext,
       stateCode,
       totalCells: kept.length,
       processed: 0,
@@ -248,6 +260,7 @@ export async function runStateScan(
     emit({
       type: "scan_completed",
       engine: "grid",
+      ...scanContext,
       runId: run?.id ?? null,
       passed: passedSites.length,
       total,
@@ -280,6 +293,7 @@ export async function runStateScan(
     emit({
       type: "scan_error",
       engine: "grid",
+      ...scanContext,
       message: msg,
       stage: currentStage,
       cancelled,
