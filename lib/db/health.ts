@@ -254,7 +254,7 @@ export function summarizeDbHealth(result: DbHealthResult): ScanDbHealthSummary {
 }
 
 export function getParcelEngineFallbackReason(result: DbHealthResult): string | null {
-  if (result.parcel_engine_usable === true || result.ok) return null;
+  if (result.parcel_engine_usable === true || result.ok === true) return null;
   if (result.reason === "DB_ENV_MISSING") return "DB_ENV_MISSING";
   if (result.reason === "DB_CONNECTION_FAILED" || !result.database_connected) return "DB_CONNECTION_FAILED";
   if (result.reason === "POSTGIS_NOT_AVAILABLE" || !result.postgis_available) return "POSTGIS_NOT_AVAILABLE";
@@ -296,6 +296,7 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
   const db = pool;
   let unifiedTableExists = false;
   let scannerParcelsExists = false;
+  let scannerParcelsForState: number | null = stateCode ? 0 : null;
 
   try {
     await measure(result, "connection", async () => {
@@ -475,7 +476,7 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
         "SELECT COUNT(*)::bigint::text AS count FROM scanner_parcels WHERE state_code = $1",
         [stateCode]
       )) as { rows: Array<{ count: string }> };
-      result.scanner_parcels_for_state = Number(query.rows[0]?.count ?? 0);
+      scannerParcelsForState = Number(query.rows[0]?.count ?? 0);
     }
     if (existingTables.has("transmission_lines")) {
       counts.transmission_lines_total = await countTable("transmission_lines");
@@ -495,7 +496,7 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
 
   result.legacy_parcels_for_state = result.counts.parcels_for_state;
   result.unified_parcels_for_state = result.counts.unified_parcels_for_state ?? null;
-  result.scanner_parcels_for_state = stateCode ? result.scanner_parcels_for_state ?? 0 : null;
+  result.scanner_parcels_for_state = scannerParcelsForState;
 
   await measure(result, "geometry_sanity", async () => {
     const tablesToCheck = REQUIRED_TABLES.filter((table) => existingTables.has(table));
@@ -580,7 +581,7 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
   });
 
   result.effective_parcels_for_state = parcelEngine.effectiveParcelsForState;
-  result.counts.parcels_for_state = parcelEngine.effectiveParcelsForState;
+  result.counts.parcels_for_state = parcelEngine.effectiveParcelsForState ?? (stateCode ? 0 : null);
   result.reason = parcelEngine.reason;
   result.parcel_engine_usable = parcelEngine.parcelEngineUsable;
 
