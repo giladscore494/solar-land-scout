@@ -10,6 +10,8 @@ import type { Geometry } from "geojson";
 
 // NASA POWER endpoint for GHI
 const NASA_POWER_URL = "https://power.larc.nasa.gov/api/temporal/climatology/point";
+const DAYS_PER_YEAR = 365;
+const GHI_ROUNDING_FACTOR = 10;
 
 async function fetchGHI(lat: number, lng: number): Promise<number | null> {
   try {
@@ -565,7 +567,7 @@ function safeParseGeometry(value: string): Geometry | undefined {
 
 function toAnnualGhi(ghiKwhM2Day: number | null): number | null {
   if (ghiKwhM2Day === null) return null;
-  return Math.round(ghiKwhM2Day * 365 * 10) / 10;
+  return Math.round(ghiKwhM2Day * DAYS_PER_YEAR * GHI_ROUNDING_FACTOR) / GHI_ROUNDING_FACTOR;
 }
 
 function isGeometry(value: unknown): value is Geometry {

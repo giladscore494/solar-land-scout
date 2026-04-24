@@ -24,6 +24,10 @@ const US_MAX_BOUNDS: LngLatBoundsLike = [
   [-179, 5],
   [-50, 72],
 ];
+const MIN_CELL_SCAN_ZOOM = 7;
+const MIN_PARCEL_SCAN_ZOOM = 10;
+const CELL_CAMERA_DURATION_MS = 400;
+const PARCEL_CAMERA_DURATION_MS = 450;
 
 interface MapViewProps {
   states: StateMacro[];
@@ -638,7 +642,11 @@ export default function MapView({
     const [minLng, minLat, maxLng, maxLat] = cell.bbox;
     const centerLng = (minLng + maxLng) / 2;
     const centerLat = (minLat + maxLat) / 2;
-    map.easeTo({ center: [centerLng, centerLat], zoom: Math.max(map.getZoom(), 7), duration: 400 });
+    map.easeTo({
+      center: [centerLng, centerLat],
+      zoom: Math.max(map.getZoom(), MIN_CELL_SCAN_ZOOM),
+      duration: CELL_CAMERA_DURATION_MS,
+    });
   }, [scanState?.currentCellId]);
 
   // Pan/fit to the active parcel during parcel scans.
@@ -656,8 +664,8 @@ export default function MapView({
     if (parcel.centroid) {
       map.easeTo({
         center: [parcel.centroid.lng, parcel.centroid.lat],
-        zoom: Math.max(map.getZoom(), 10),
-        duration: 450,
+        zoom: Math.max(map.getZoom(), MIN_PARCEL_SCAN_ZOOM),
+        duration: PARCEL_CAMERA_DURATION_MS,
       });
       return;
     }
@@ -667,7 +675,7 @@ export default function MapView({
     if (!bounds) return;
     map.fitBounds(bounds, {
       padding: 80,
-      duration: 450,
+      duration: PARCEL_CAMERA_DURATION_MS,
       essential: true,
       maxZoom: 12.5,
     });
