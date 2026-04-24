@@ -5,6 +5,8 @@ import type { Geometry } from "geojson";
 import type { CandidateSite } from "@/types/domain";
 import type { ScanEngine, ScanEvent } from "@/types/scan-events";
 
+const MAX_DEBUG_LOG_SIZE = 8;
+
 export interface ScanProgress {
   processed: number;
   total: number;
@@ -395,5 +397,5 @@ function handleEvent(event: ScanEvent, dispatch: React.Dispatch<ScanAction>): vo
 }
 
 function appendDebug(lines: string[], next: string): string[] {
-  return [next, ...lines].slice(0, 8);
+  return [next, ...lines].slice(0, MAX_DEBUG_LOG_SIZE);
 }

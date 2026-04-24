@@ -278,6 +278,7 @@ export async function runParcelScan(
         const spatialMetrics = metricsResult.rows[0];
         const totalAcres = parcel.acres ?? parcel.computed_acres;
         const ghi = await fetchGHI(parcel.lat, parcel.lng);
+        const annualGhi = toAnnualGhi(ghi);
 
         const metrics: ParcelMetrics = {
           total_acres: totalAcres,
@@ -378,7 +379,7 @@ export async function runParcelScan(
             in_flood_zone: metrics.in_flood_zone,
             flood_zone: metrics.flood_zone_code,
             distance_to_infra_km: metrics.distance_to_transmission_km,
-            annual_ghi_kwh_m2: metrics.ghi_kwh_m2_day,
+            annual_ghi_kwh_m2: annualGhi,
             contiguous_acres: metrics.contiguous_usable_acres,
             slope_pct: metrics.mean_slope_percent,
           };
@@ -555,8 +556,32 @@ export async function runParcelScan(
 
 function safeParseGeometry(value: string): Geometry | undefined {
   try {
-    return JSON.parse(value) as Geometry;
+    const parsed = JSON.parse(value);
+    return isGeometry(parsed) ? parsed : undefined;
   } catch {
     return undefined;
+  }
+}
+
+function toAnnualGhi(ghiKwhM2Day: number | null): number | null {
+  if (ghiKwhM2Day === null) return null;
+  return Math.round(ghiKwhM2Day * 365 * 10) / 10;
+}
+
+function isGeometry(value: unknown): value is Geometry {
+  if (!value || typeof value !== "object") return false;
+  const geometry = value as { type?: unknown; coordinates?: unknown; geometries?: unknown };
+  switch (geometry.type) {
+    case "Point":
+    case "MultiPoint":
+    case "LineString":
+    case "MultiLineString":
+    case "Polygon":
+    case "MultiPolygon":
+      return "coordinates" in geometry;
+    case "GeometryCollection":
+      return Array.isArray(geometry.geometries);
+    default:
+      return false;
   }
 }
