@@ -123,12 +123,7 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
               <div>missing indexes: {joinList(dbHealth?.missing_indexes)}</div>
               <div>reason: {dbHealth?.reason ?? "none"}</div>
               {dbHealth && Object.keys(dbHealth.missing_columns).length > 0 && (
-                <div>
-                  missing columns:{" "}
-                  {Object.entries(dbHealth.missing_columns)
-                    .map(([table, cols]) => `${table}[${cols.join(", ")}]`)
-                    .join("; ")}
-                </div>
+                <div>missing columns: {formatMissingColumns(dbHealth.missing_columns)}</div>
               )}
             </div>
           </div>
@@ -249,4 +244,11 @@ function joinList(values?: string[]): string {
 function toYesNo(value: boolean | undefined): string {
   if (value === undefined) return "n/a";
   return value ? "yes" : "no";
+}
+
+function formatMissingColumns(value: Record<string, string[]>): string {
+  const formatted = Object.entries(value)
+    .map(([table, cols]) => `${table}[${cols.join(", ")}]`)
+    .join("; ");
+  return formatted.length > 180 ? `${formatted.slice(0, 177)}...` : formatted;
 }

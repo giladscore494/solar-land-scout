@@ -13,6 +13,8 @@ const REQUIRED_TABLES = [
 type RequiredTable = (typeof REQUIRED_TABLES)[number];
 
 const REQUIRED_COLUMNS: Record<RequiredTable, string[]> = {
+  // These are the public readiness columns the parcel engine/debug UI expect after
+  // the migration backfills compatibility values from legacy importer columns.
   parcels: ["id", "state_code", "geom", "owner_name", "zoning", "county", "source", "updated_at"],
   transmission_lines: ["id", "geom", "source", "updated_at"],
   substations: ["id", "geom", "source", "updated_at"],
@@ -212,13 +214,10 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
     if (!existingTables.has(table)) continue;
     const columns = existingColumns.get(table) ?? new Set<string>();
     const missing = REQUIRED_COLUMNS[table].filter((column) => !columns.has(column));
-    if (table === "parcels" && !columns.has("area_acres") && columns.has("geom")) {
-      pushWarning(result, "parcels.area_acres missing; using geometry area fallback");
-    }
     if (table === "parcels" && !columns.has("area_acres")) {
-      // geometry fallback is acceptable; do not count as missing when geom exists
-      const idx = missing.indexOf("area_acres");
-      if (idx >= 0) missing.splice(idx, 1);
+      if (columns.has("geom")) {
+        pushWarning(result, "parcels.area_acres missing; using geometry area fallback");
+      }
     }
     if (missing.length > 0) {
       result.missing_columns[table] = missing;

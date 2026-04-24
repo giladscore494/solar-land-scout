@@ -20,10 +20,16 @@ export function detectDatabaseUrlKind(url: string | null): DatabaseUrlKind {
   try {
     const parsed = new URL(url);
     const host = parsed.hostname.toLowerCase();
-    if (host.includes("pooler.supabase.com") || parsed.port === "6543") {
+    const isPoolerHost = host === "pooler.supabase.com" || host.endsWith(".pooler.supabase.com");
+    const isDirectHost =
+      host === "supabase.co" ||
+      host.endsWith(".supabase.co") ||
+      host === "supabase.com" ||
+      host.endsWith(".supabase.com");
+    if (isPoolerHost || parsed.port === "6543") {
       return "pooler";
     }
-    if (host.includes("supabase.co") || host.includes("supabase.com") || parsed.port === "5432") {
+    if (isDirectHost || parsed.port === "5432") {
       return "direct";
     }
     return "unknown";

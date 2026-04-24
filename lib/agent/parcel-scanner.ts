@@ -204,6 +204,8 @@ export async function runParcelScan(
       currentActivity = `No hot-zone cells available for ${stateCode}`;
     } else if (hotZoneDiscovery.failedRequests === hotZoneDiscovery.totalCells) {
       currentActivity = `NASA POWER unavailable for all ${hotZoneDiscovery.totalCells} sampled cells`;
+    } else if (hotZones.length === 0) {
+      currentActivity = `No sampled cells met the GHI threshold across ${hotZoneDiscovery.totalCells} hot-zone checks`;
     } else {
       currentActivity = `Identified ${hotZones.length} hot zone(s) from ${hotZoneDiscovery.totalCells} sampled cells`;
     }

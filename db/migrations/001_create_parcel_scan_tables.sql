@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS parcels (
   UNIQUE (source, source_id)
 );
 
+-- Legacy compatibility for databases that already have the older importer schema.
+-- The CREATE TABLE blocks define the current structural shape; the ALTER/UPDATE
+-- statements below backfill required readiness columns without rebuilding tables.
 ALTER TABLE parcels ADD COLUMN IF NOT EXISTS county TEXT;
 ALTER TABLE parcels ADD COLUMN IF NOT EXISTS zoning TEXT;
 ALTER TABLE parcels ADD COLUMN IF NOT EXISTS area_acres DOUBLE PRECISION;
