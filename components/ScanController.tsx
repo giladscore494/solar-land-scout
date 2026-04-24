@@ -139,9 +139,10 @@ function reducer(state: ScanState, action: ScanAction): ScanState {
         centroid: action.event.centroid,
         properties: action.event.properties,
       });
+      const nextSite = action.event.site;
       const passedSites =
-        action.event.site && !state.passedSites.some((site) => site.id === action.event.site.id)
-          ? [...state.passedSites, action.event.site]
+        nextSite && !state.passedSites.some((site) => site.id === nextSite.id)
+          ? [...state.passedSites, nextSite]
           : state.passedSites;
       const rejected_by = { ...state.tally.rejected_by };
       if (action.event.status === "rejected" && action.event.reason) {
