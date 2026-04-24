@@ -131,7 +131,9 @@ export async function runParcelScan(
 
   const pool = await getPostGISPool();
   if (!pool) {
-    throw new Error("Parcel engine requires SUPABASE_DATABASE_URL or DATABASE_URL to be configured");
+    throw new Error(
+      "Parcel engine requires SUPABASE_DATABASE_URL or DATABASE_URL to be configured (prefers SUPABASE_DATABASE_URL when both are set)"
+    );
   }
 
   const run = await createAnalysisRun(stateCode, "en");

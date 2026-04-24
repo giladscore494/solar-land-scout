@@ -31,8 +31,7 @@ export async function getPostGISPool(): Promise<QueryablePool | null> {
       max: 5,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
-      query_timeout: statementTimeout,
-      statement_timeout: statementTimeout,
+      options: `-c statement_timeout=${statementTimeout}`,
     });
 
     return pool;
