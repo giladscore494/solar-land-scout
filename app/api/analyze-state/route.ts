@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runStateScan } from "@/lib/agent/run-scan";
 import { runParcelScan } from "@/lib/agent/parcel-scanner";
+import { selectAnalyzeStateEngine } from "@/lib/agent/scan-engine";
 import {
   checkDatabaseHealth,
   getParcelEngineFallbackReason,
@@ -43,9 +44,7 @@ export async function POST(req: NextRequest) {
     const health = await checkDatabaseHealth({ stateCode });
     dbHealth = summarizeDbHealth(health);
     fallbackReason = getParcelEngineFallbackReason(health);
-    if (!health.ok) {
-      engine = "grid";
-    }
+    engine = selectAnalyzeStateEngine(requestedEngine, health);
   }
 
   const runScan = engine === "parcel" ? runParcelScan : runStateScan;

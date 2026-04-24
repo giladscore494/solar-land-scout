@@ -101,6 +101,12 @@ function makeBaseResult(stateCode?: string | null): DbHealthResult {
     step_elapsed_ms: {},
     url_kind: null,
     parcel_coverage: null,
+    legacy_parcels_for_state: stateCode ? 0 : null,
+    unified_parcels_for_state: stateCode ? 0 : null,
+    scanner_parcels_for_state: stateCode ? 0 : null,
+    effective_parcels_for_state: stateCode ? 0 : null,
+    scanner_relation: null,
+    parcel_engine_usable: false,
   };
 }
 
@@ -170,6 +176,60 @@ function hasBlockingMissingColumns(result: DbHealthResult): boolean {
   return Object.keys(result.blocking_missing_columns).length > 0;
 }
 
+interface ParcelEngineAvailabilityInput {
+  stateCode?: string | null;
+  legacyParcelsForState: number | null;
+  unifiedParcelsForState: number | null;
+  scannerParcelsForState: number | null;
+  legacyParcelsTotal: number;
+  unifiedParcelsTotal: number;
+  scannerRelation: "scanner_parcels" | "parcels" | null;
+  baseUsable: boolean;
+  reason: string | null;
+}
+
+interface ParcelEngineAvailability {
+  effectiveParcelsForState: number | null;
+  effectiveParcelsTotal: number;
+  parcelEngineUsable: boolean;
+  reason: string | null;
+}
+
+export function resolveParcelEngineAvailability(
+  input: ParcelEngineAvailabilityInput
+): ParcelEngineAvailability {
+  const scannerBackedStateCount =
+    (input.scannerParcelsForState ?? 0) > 0
+      ? Math.max(input.scannerParcelsForState ?? 0, input.unifiedParcelsForState ?? 0)
+      : null;
+  const effectiveParcelsForState =
+    input.stateCode
+      ? scannerBackedStateCount ?? input.legacyParcelsForState ?? 0
+      : null;
+  const effectiveParcelsTotal =
+    input.scannerRelation === "scanner_parcels" && input.unifiedParcelsTotal > 0
+      ? input.unifiedParcelsTotal
+      : input.legacyParcelsTotal;
+  const availabilityCount = input.stateCode
+    ? effectiveParcelsForState ?? 0
+    : effectiveParcelsTotal;
+
+  let reason = input.reason;
+  if (reason === "PARCEL_STATE_EMPTY" && availabilityCount > 0) {
+    reason = null;
+  }
+  if (!reason && input.stateCode && availabilityCount === 0) {
+    reason = "PARCEL_STATE_EMPTY";
+  }
+
+  return {
+    effectiveParcelsForState,
+    effectiveParcelsTotal,
+    parcelEngineUsable: input.baseUsable && availabilityCount > 0,
+    reason,
+  };
+}
+
 export function summarizeDbHealth(result: DbHealthResult): ScanDbHealthSummary {
   return {
     selected_url_env: result.selected_url_env,
@@ -185,17 +245,29 @@ export function summarizeDbHealth(result: DbHealthResult): ScanDbHealthSummary {
     warnings: result.warnings,
     reason: result.reason,
     parcel_coverage: result.parcel_coverage ?? null,
+    legacy_parcels_for_state: result.legacy_parcels_for_state ?? null,
+    scanner_parcels_for_state: result.scanner_parcels_for_state ?? null,
+    effective_parcels_for_state: result.effective_parcels_for_state ?? null,
+    scanner_relation: result.scanner_relation ?? null,
+    parcel_engine_usable: result.parcel_engine_usable ?? false,
   };
 }
 
 export function getParcelEngineFallbackReason(result: DbHealthResult): string | null {
-  if (result.ok) return null;
-  if (result.reason) return result.reason;
+  if (result.parcel_engine_usable === true || result.ok) return null;
+  if (result.reason === "DB_ENV_MISSING") return "DB_ENV_MISSING";
+  if (result.reason === "DB_CONNECTION_FAILED" || !result.database_connected) return "DB_CONNECTION_FAILED";
+  if (result.reason === "POSTGIS_NOT_AVAILABLE" || !result.postgis_available) return "POSTGIS_NOT_AVAILABLE";
   if (result.missing_tables.length > 0) return "PARCEL_TABLES_MISSING";
   if (hasBlockingMissingColumns(result)) return "PARCEL_REQUIRED_COLUMNS_MISSING";
   if (result.missing_indexes.length > 0) return "PARCEL_REQUIRED_INDEXES_MISSING";
-  if (result.counts.parcels_for_state === 0) return "PARCEL_STATE_EMPTY";
-  return "PARCEL_ENGINE_UNAVAILABLE";
+  if (
+    result.reason === "PARCEL_STATE_EMPTY" ||
+    (result.effective_parcels_for_state != null && result.effective_parcels_for_state === 0)
+  ) {
+    return "PARCEL_STATE_EMPTY";
+  }
+  return result.reason ?? "PARCEL_ENGINE_UNAVAILABLE";
 }
 
 export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<DbHealthResult> {
@@ -222,6 +294,8 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
     return result;
   }
   const db = pool;
+  let unifiedTableExists = false;
+  let scannerParcelsExists = false;
 
   try {
     await measure(result, "connection", async () => {
@@ -338,6 +412,27 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
     setReason(result, "PARCEL_REQUIRED_INDEXES_MISSING");
   }
 
+  const parcelRelations = await measure(result, "parcel_relations", async () => {
+    const query = (await db.query(
+      `SELECT
+         EXISTS (
+           SELECT 1
+             FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = 'parcels_unified'
+         ) AS unified_present,
+         EXISTS (
+           SELECT 1
+             FROM information_schema.views
+            WHERE table_schema = 'public'
+              AND table_name = 'scanner_parcels'
+         ) AS scanner_present`
+    )) as { rows: Array<{ unified_present: boolean; scanner_present: boolean }> };
+    return query.rows[0] ?? { unified_present: false, scanner_present: false };
+  });
+  unifiedTableExists = parcelRelations.unified_present;
+  scannerParcelsExists = parcelRelations.scanner_present;
+
   result.counts = await measure(result, "counts", async () => {
     const counts: DbHealthCounts = {
       ...EMPTY_COUNTS,
@@ -362,13 +457,7 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
         counts.parcels_for_state = Number(query.rows[0]?.count ?? 0);
       }
     }
-    const unifiedExists = (await db.query(
-      `SELECT EXISTS (
-         SELECT 1 FROM information_schema.tables
-          WHERE table_schema = 'public' AND table_name = 'parcels_unified'
-       ) AS present`
-    )) as { rows: Array<{ present: boolean }> };
-    if (unifiedExists.rows[0]?.present) {
+    if (unifiedTableExists) {
       const unifiedTotal = (await db.query(
         "SELECT COUNT(*)::bigint::text AS count FROM parcels_unified"
       )) as { rows: Array<{ count: string }> };
@@ -380,6 +469,13 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
         )) as { rows: Array<{ count: string }> };
         counts.unified_parcels_for_state = Number(query.rows[0]?.count ?? 0);
       }
+    }
+    if (scannerParcelsExists && stateCode) {
+      const query = (await db.query(
+        "SELECT COUNT(*)::bigint::text AS count FROM scanner_parcels WHERE state_code = $1",
+        [stateCode]
+      )) as { rows: Array<{ count: string }> };
+      result.scanner_parcels_for_state = Number(query.rows[0]?.count ?? 0);
     }
     if (existingTables.has("transmission_lines")) {
       counts.transmission_lines_total = await countTable("transmission_lines");
@@ -396,6 +492,10 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
 
     return counts;
   });
+
+  result.legacy_parcels_for_state = result.counts.parcels_for_state;
+  result.unified_parcels_for_state = result.counts.unified_parcels_for_state ?? null;
+  result.scanner_parcels_for_state = stateCode ? result.scanner_parcels_for_state ?? 0 : null;
 
   await measure(result, "geometry_sanity", async () => {
     const tablesToCheck = REQUIRED_TABLES.filter((table) => existingTables.has(table));
@@ -421,30 +521,12 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
   });
 
   const scannerRelation = result.database_connected ? await detectScannerParcelRelation(db, stateCode) : "parcels";
-  const effectiveStateParcels =
-    scannerRelation === "scanner_parcels"
-      ? result.counts.unified_parcels_for_state ?? result.counts.parcels_for_state
-      : result.counts.parcels_for_state;
-  const effectiveTotalParcels =
-    scannerRelation === "scanner_parcels"
-      ? result.counts.unified_parcels_total ?? result.counts.parcels_total
-      : result.counts.parcels_total;
-
-  if (effectiveTotalParcels === 0 && existingTables.has("parcels")) {
-    pushWarning(result, "parcels table is empty; parcel scans will fall back to grid mode");
-  }
-
-  if (stateCode && effectiveStateParcels === 0) {
-    pushWarning(result, `No parcels found for state ${stateCode}`);
-    if (!result.reason) {
-      result.reason = "PARCEL_STATE_EMPTY";
-    }
-  }
+  result.scanner_relation = scannerRelation;
 
   if (
     existingTables.has("parcels") &&
     !result.reason &&
-    (!stateCode || effectiveStateParcels === null || effectiveStateParcels > 0)
+    (!stateCode || (result.scanner_parcels_for_state ?? result.counts.parcels_for_state ?? 0) > 0)
   ) {
     try {
       await measure(result, "query_sanity", async () => {
@@ -471,22 +553,46 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
   if (stateCode) {
     try {
       result.parcel_coverage = await getParcelCoverageSummary(db, stateCode);
-      result.counts.parcels_for_state =
-        result.parcel_coverage.scanner_relation === "scanner_parcels"
-          ? result.parcel_coverage.unified_parcels_count
-          : result.counts.parcels_for_state;
+      result.scanner_relation = result.parcel_coverage.scanner_relation;
+      result.unified_parcels_for_state = result.parcel_coverage.unified_parcels_count;
+      result.counts.unified_parcels_for_state = result.parcel_coverage.unified_parcels_count;
     } catch {
       result.parcel_coverage = null;
     }
   }
 
-  result.ok =
+  const baseUsable =
     result.database_connected &&
     result.postgis_available &&
     result.missing_tables.length === 0 &&
     !hasBlockingMissingColumns(result) &&
-    result.missing_indexes.length === 0 &&
-    !result.reason;
+    result.missing_indexes.length === 0;
+  const parcelEngine = resolveParcelEngineAvailability({
+    stateCode,
+    legacyParcelsForState: result.legacy_parcels_for_state ?? null,
+    unifiedParcelsForState: result.unified_parcels_for_state ?? null,
+    scannerParcelsForState: result.scanner_parcels_for_state ?? null,
+    legacyParcelsTotal: result.counts.parcels_total,
+    unifiedParcelsTotal: result.counts.unified_parcels_total ?? 0,
+    scannerRelation: result.scanner_relation ?? scannerRelation,
+    baseUsable,
+    reason: result.reason,
+  });
+
+  result.effective_parcels_for_state = parcelEngine.effectiveParcelsForState;
+  result.counts.parcels_for_state = parcelEngine.effectiveParcelsForState;
+  result.reason = parcelEngine.reason;
+  result.parcel_engine_usable = parcelEngine.parcelEngineUsable;
+
+  if (parcelEngine.effectiveParcelsTotal === 0 && existingTables.has("parcels")) {
+    pushWarning(result, "parcels table is empty; parcel scans will fall back to grid mode");
+  }
+  if (stateCode && parcelEngine.effectiveParcelsForState === 0) {
+    pushWarning(result, `No parcels found for state ${stateCode}`);
+  }
+
+  result.ok =
+    result.parcel_engine_usable;
   result.elapsed_ms = Date.now() - started;
   return result;
 }
