@@ -284,10 +284,18 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
         counts.parcels_for_state = Number(query.rows[0]?.count ?? 0);
       }
     }
-    if (existingTables.has("transmission_lines")) counts.transmission_lines_total = await countTable("transmission_lines");
-    if (existingTables.has("substations")) counts.substations_total = await countTable("substations");
-    if (existingTables.has("protected_areas")) counts.protected_areas_total = await countTable("protected_areas");
-    if (existingTables.has("flood_zones")) counts.flood_zones_total = await countTable("flood_zones");
+    if (existingTables.has("transmission_lines")) {
+      counts.transmission_lines_total = await countTable("transmission_lines");
+    }
+    if (existingTables.has("substations")) {
+      counts.substations_total = await countTable("substations");
+    }
+    if (existingTables.has("protected_areas")) {
+      counts.protected_areas_total = await countTable("protected_areas");
+    }
+    if (existingTables.has("flood_zones")) {
+      counts.flood_zones_total = await countTable("flood_zones");
+    }
 
     return counts;
   });

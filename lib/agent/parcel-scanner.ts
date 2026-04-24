@@ -16,7 +16,6 @@ const DAYS_PER_YEAR = 365;
 const GHI_ROUNDING_FACTOR = 10;
 const HOTZONE_CELL_DELAY_MS = 50;
 const GHI_THRESHOLD = 5.0;
-const POSTGIS_QUERY_TIMEOUT_MS = getPostgisQueryTimeoutMs();
 
 async function fetchGHI(lat: number, lng: number): Promise<number | null> {
   try {
@@ -104,15 +103,16 @@ function distanceToInfraProximity(distKm: number | null): "near" | "moderate" | 
 }
 
 function normalizeParcelError(error: unknown): Error {
+  const timeoutMs = getPostgisQueryTimeoutMs();
   if (error instanceof Error && error.message.toLowerCase().includes("timeout")) {
-    return new Error(`Parcel query timed out after ${POSTGIS_QUERY_TIMEOUT_MS}ms`);
+    return new Error(`Parcel query timed out after ${timeoutMs}ms`);
   }
   if (
     error instanceof Error &&
     "code" in error &&
     (error as Error & { code?: string }).code === "57014"
   ) {
-    return new Error(`Parcel query timed out after ${POSTGIS_QUERY_TIMEOUT_MS}ms`);
+    return new Error(`Parcel query timed out after ${timeoutMs}ms`);
   }
   return error instanceof Error ? error : new Error("parcel_failed");
 }

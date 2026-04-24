@@ -7,6 +7,8 @@ interface Props {
   onCancel: () => void;
 }
 
+const MISSING_COLUMNS_PREVIEW_LIMIT = 180;
+
 export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
   const {
     status,
@@ -250,5 +252,7 @@ function formatMissingColumns(value: Record<string, string[]>): string {
   const formatted = Object.entries(value)
     .map(([table, cols]) => `${table}[${cols.join(", ")}]`)
     .join("; ");
-  return formatted.length > 180 ? `${formatted.slice(0, 177)}...` : formatted;
+  return formatted.length > MISSING_COLUMNS_PREVIEW_LIMIT
+    ? `${formatted.slice(0, MISSING_COLUMNS_PREVIEW_LIMIT - 3)}...`
+    : formatted;
 }
