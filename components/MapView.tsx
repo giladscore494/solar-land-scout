@@ -194,10 +194,11 @@ export default function MapView({
               "case",
               ["==", ["get", "status"], "error"], "#a855f7",
               ["==", ["get", "status"], "rejected"], "#ef4444",
+              ["!", ["has", "score"]], "#64748b",
               [
                 "interpolate",
                 ["linear"],
-                ["coalesce", ["get", "score"], 0],
+                ["get", "score"],
                 0, "#f59e0b",
                 60, "#84cc16",
                 85, "#22c55e",
@@ -613,9 +614,9 @@ export default function MapView({
         properties: {
           parcelId,
           status: parcel.status,
-          score: parcel.score ?? 0,
           reason: parcel.reason ?? null,
           ...(parcel.properties ?? {}),
+          ...(parcel.score != null ? { score: parcel.score } : {}),
         },
       });
     }

@@ -35,6 +35,7 @@ export interface ScanState {
   activityLine: string | null;
   runId: number | null;
   debugLog: string[];
+  passedSiteIds: Set<string>;
   cellResults: Map<string, { verdict: "passed" | "soft_reject" | "hard_reject"; bbox: [number, number, number, number] }>;
   parcelResults: Map<
     string,
@@ -77,6 +78,7 @@ const initialState: ScanState = {
   activityLine: null,
   runId: null,
   debugLog: [],
+  passedSiteIds: new Set(),
   cellResults: new Map(),
   parcelResults: new Map(),
 };
@@ -87,6 +89,7 @@ function reducer(state: ScanState, action: ScanAction): ScanState {
       return {
         ...initialState,
         status: "scanning",
+        passedSiteIds: new Set(),
         cellResults: new Map(),
         parcelResults: new Map(),
       };
@@ -114,13 +117,18 @@ function reducer(state: ScanState, action: ScanAction): ScanState {
     case "CELL_RESULT": {
       const newMap = new Map(state.cellResults);
       newMap.set(action.event.cellId, { verdict: action.event.verdict, bbox: action.event.bbox });
+      const nextPassedSiteIds = new Set(state.passedSiteIds);
+      if (action.event.verdict === "passed" && action.event.site) {
+        nextPassedSiteIds.add(action.event.site.id);
+      }
       return {
         ...state,
         engine: "grid",
         currentCellId: action.event.cellId,
         cellResults: newMap,
+        passedSiteIds: nextPassedSiteIds,
         passedSites:
-          action.event.verdict === "passed" && action.event.site
+          action.event.verdict === "passed" && action.event.site && !state.passedSiteIds.has(action.event.site.id)
             ? [...state.passedSites, action.event.site]
             : state.passedSites,
         debugLog: appendDebug(
@@ -142,8 +150,12 @@ function reducer(state: ScanState, action: ScanAction): ScanState {
         properties: action.event.properties,
       });
       const nextSite = action.event.site;
+      const nextPassedSiteIds = new Set(state.passedSiteIds);
+      if (nextSite) {
+        nextPassedSiteIds.add(nextSite.id);
+      }
       const passedSites =
-        nextSite && !state.passedSites.some((site) => site.id === nextSite.id)
+        nextSite && !state.passedSiteIds.has(nextSite.id)
           ? [...state.passedSites, nextSite]
           : state.passedSites;
       const rejected_by = { ...state.tally.rejected_by };
@@ -157,6 +169,7 @@ function reducer(state: ScanState, action: ScanAction): ScanState {
         engine: "parcel",
         currentParcelId: action.event.parcelId,
         parcelResults,
+        passedSiteIds: nextPassedSiteIds,
         passedSites,
         progress: { processed: action.event.processed, total: action.event.totalParcels },
         tally: { rejected_by, passed: action.event.passed },
