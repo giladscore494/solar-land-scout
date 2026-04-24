@@ -246,10 +246,11 @@ export function resolveParcelEngineAvailability(
   }
 
   let nextActionMessage: string | null = null;
+  const stateCommandSuffix = input.stateCode?.toLowerCase() ?? "state";
   if (scannerParcelsForState > 0) {
     nextActionMessage = "Parcel engine is usable.";
   } else if (rawFeaturesForState === 0 && unifiedParcelsForState === 0 && scannerParcelsForState === 0) {
-    nextActionMessage = "Run import:parcels:az, then parcels:unify.";
+    nextActionMessage = `Run import:parcels:${stateCommandSuffix}, then parcels:unify.`;
   } else if (rawFeaturesForState > 0 && unifiedParcelsForState === 0) {
     nextActionMessage =
       "Raw parcel features exist, but unification has not produced scanner parcels. Run parcels:unify and inspect errors.";
@@ -497,7 +498,16 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
     async function countOptionalRelationForState(
       relationName: "raw_parcel_features" | "parcels_unified" | "scanner_parcels"
     ): Promise<number> {
-      const query = (await db.query(`SELECT COUNT(*)::bigint::text AS count FROM ${relationName} WHERE state_code = $1`, [
+      const safeRelationName =
+        relationName === "raw_parcel_features" ||
+        relationName === "parcels_unified" ||
+        relationName === "scanner_parcels"
+          ? relationName
+          : null;
+      if (!safeRelationName) {
+        throw new Error(`Unsupported parcel lineage relation: ${relationName}`);
+      }
+      const query = (await db.query(`SELECT COUNT(*)::bigint::text AS count FROM ${safeRelationName} WHERE state_code = $1`, [
         stateCode,
       ])) as { rows: Array<{ count: string }> };
       return Number(query.rows[0]?.count ?? 0);

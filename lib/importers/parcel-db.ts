@@ -33,7 +33,12 @@ async function countByState(
   relationName: string,
   stateCode: string
 ): Promise<number> {
-  const result = (await pool.query(`SELECT COUNT(*)::bigint::text AS count FROM ${relationName} WHERE state_code = $1`, [
+  const safeRelationName =
+    relationName === "scanner_parcels" || relationName === "parcels" ? relationName : null;
+  if (!safeRelationName) {
+    throw new Error(`Unsupported parcel relation: ${relationName}`);
+  }
+  const result = (await pool.query(`SELECT COUNT(*)::bigint::text AS count FROM ${safeRelationName} WHERE state_code = $1`, [
     stateCode,
   ])) as { rows: Array<{ count: string }> };
   return Number(result.rows[0]?.count ?? 0);
