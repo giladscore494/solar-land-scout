@@ -131,22 +131,25 @@ export default function AppShell() {
     setRunError(null);
   }, [selectedStateCode, scanController, setPanelOpen]);
 
+  useEffect(() => {
+    const passedSites = scanController.state.passedSites;
+    if (passedSites.length === 0) return;
+    setSites((prev) => {
+      const ids = new Set(passedSites.map((s) => s.id));
+      return [...prev.filter((s) => !ids.has(s.id)), ...passedSites];
+    });
+    setAllCandidates((prev) => {
+      const ids = new Set(passedSites.map((s) => s.id));
+      return [...prev.filter((s) => !ids.has(s.id)), ...passedSites];
+    });
+  }, [scanController.state.passedSites]);
+
   // When scan completes, refresh sites and update legacy state
   useEffect(() => {
     if (scanController.state.status === "done") {
-      const passedSites = scanController.state.passedSites;
-      if (passedSites.length > 0) {
-        setSites((prev) => {
-          const ids = new Set(passedSites.map((s) => s.id));
-          return [...prev.filter((s) => !ids.has(s.id)), ...passedSites];
-        });
-        setAllCandidates((prev) => {
-          const ids = new Set(passedSites.map((s) => s.id));
-          return [...prev.filter((s) => !ids.has(s.id)), ...passedSites];
-        });
-      }
       setRunDebug({
         state_code: selectedStateCode,
+        engine: scanController.state.engine,
         total_generated: scanController.state.progress.total,
         total_passing_strict: scanController.state.tally.passed,
         rejected_by: scanController.state.tally.rejected_by,
@@ -158,10 +161,13 @@ export default function AppShell() {
     } else if (scanController.state.status === "error") {
       setRunStatus("error");
       setRunError(scanController.state.errorMessage ?? "scan_failed");
+    } else if (scanController.state.status === "cancelled") {
+      setRunStatus("idle");
+      setRunError(null);
     } else if (scanController.state.status === "scanning") {
       setRunStatus("running");
     }
-  }, [scanController.state.status, scanController.state.passedSites, scanController.state.progress.total, scanController.state.tally, scanController.state.errorMessage, selectedStateCode, refreshRuns]);
+  }, [scanController.state.status, scanController.state.engine, scanController.state.progress.total, scanController.state.tally, scanController.state.errorMessage, selectedStateCode, refreshRuns]);
 
   const handleSelectState = useCallback((code: string | null) => {
     setSelectedStateCode(code);

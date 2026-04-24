@@ -24,6 +24,10 @@ const US_MAX_BOUNDS: LngLatBoundsLike = [
   [-179, 5],
   [-50, 72],
 ];
+const MIN_CELL_SCAN_ZOOM = 7;
+const MIN_PARCEL_SCAN_ZOOM = 10;
+const CELL_CAMERA_DURATION_MS = 400;
+const PARCEL_CAMERA_DURATION_MS = 450;
 
 interface MapViewProps {
   states: StateMacro[];
@@ -191,12 +195,18 @@ export default function MapView({
           source: "scan-parcels",
           paint: {
             "fill-color": [
-              "interpolate",
-              ["linear"],
-              ["get", "score"],
-              0, "#ef4444",
-              50, "#f59e0b",
-              80, "#22c55e",
+              "case",
+              ["==", ["get", "status"], "error"], "#a855f7",
+              ["==", ["get", "status"], "rejected"], "#ef4444",
+              ["!", ["has", "score"]], "#64748b",
+              [
+                "interpolate",
+                ["linear"],
+                ["get", "score"],
+                0, "#f59e0b",
+                60, "#84cc16",
+                85, "#22c55e",
+              ],
             ],
             "fill-opacity": 0.3,
           },
@@ -206,7 +216,12 @@ export default function MapView({
           type: "line",
           source: "scan-parcels",
           paint: {
-            "line-color": "#94a3b8",
+            "line-color": [
+              "case",
+              ["==", ["get", "status"], "error"], "#c084fc",
+              ["==", ["get", "status"], "rejected"], "#f87171",
+              "#86efac",
+            ],
             "line-width": 0.8,
             "line-opacity": 0.6,
           },
@@ -578,6 +593,40 @@ export default function MapView({
     src.setData({ type: "FeatureCollection", features });
   }, [scanState?.cellResults, scanState?.status]);
 
+  // Update scan-parcels overlay as parcel results arrive during a scan.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    const src = map.getSource("scan-parcels") as
+      | { setData: (d: FeatureCollection) => void }
+      | undefined;
+    if (!src) return;
+
+    if (!scanState || scanState.status === "idle" || scanState.engine !== "parcel") {
+      src.setData(emptyFc());
+      return;
+    }
+
+    const features: Feature[] = [];
+    for (const [parcelId, parcel] of scanState.parcelResults) {
+      if (!parcel.geometry) continue;
+      features.push({
+        type: "Feature",
+        id: parcelId,
+        geometry: parcel.geometry,
+        properties: {
+          parcelId,
+          status: parcel.status,
+          reason: parcel.reason ?? null,
+          ...(parcel.properties ?? {}),
+          ...(parcel.score != null ? { score: parcel.score } : {}),
+        },
+      });
+    }
+    src.setData({ type: "FeatureCollection", features });
+  }, [scanState?.engine, scanState?.parcelResults, scanState?.status]);
+
   // Pan to current cell during scan.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -593,8 +642,44 @@ export default function MapView({
     const [minLng, minLat, maxLng, maxLat] = cell.bbox;
     const centerLng = (minLng + maxLng) / 2;
     const centerLat = (minLat + maxLat) / 2;
-    map.easeTo({ center: [centerLng, centerLat], zoom: Math.max(map.getZoom(), 7), duration: 400 });
+    map.easeTo({
+      center: [centerLng, centerLat],
+      zoom: Math.max(map.getZoom(), MIN_CELL_SCAN_ZOOM),
+      duration: CELL_CAMERA_DURATION_MS,
+    });
   }, [scanState?.currentCellId]);
+
+  // Pan/fit to the active parcel during parcel scans.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    if (scanState?.engine !== "parcel" || !scanState.currentParcelId) return;
+    const parcel = scanState.parcelResults.get(scanState.currentParcelId);
+    if (!parcel) return;
+    const now = Date.now();
+    if (now - lastCameraMoveRef.current < 500) return;
+    lastCameraMoveRef.current = now;
+
+    if (parcel.centroid) {
+      map.easeTo({
+        center: [parcel.centroid.lng, parcel.centroid.lat],
+        zoom: Math.max(map.getZoom(), MIN_PARCEL_SCAN_ZOOM),
+        duration: PARCEL_CAMERA_DURATION_MS,
+      });
+      return;
+    }
+
+    if (!parcel.geometry) return;
+    const bounds = bboxOfGeometry(parcel.geometry);
+    if (!bounds) return;
+    map.fitBounds(bounds, {
+      padding: 80,
+      duration: PARCEL_CAMERA_DURATION_MS,
+      essential: true,
+      maxZoom: 12.5,
+    });
+  }, [scanState?.currentParcelId, scanState?.engine]);
 
   return (
     <div className="relative h-full w-full">
@@ -619,6 +704,12 @@ function emptyFc(): FeatureCollection {
 function bboxOfFeature(
   f: Feature
 ): [[number, number], [number, number]] | null {
+  return bboxOfGeometry(f.geometry);
+}
+
+function bboxOfGeometry(
+  g: Geometry | null | undefined
+): [[number, number], [number, number]] | null {
   let minX = Infinity,
     minY = Infinity,
     maxX = -Infinity,
@@ -631,7 +722,6 @@ function bboxOfFeature(
       if (y > maxY) maxY = y;
     }
   };
-  const g = f.geometry;
   if (!g) return null;
   if (g.type === "Polygon") {
     g.coordinates.forEach(eachRing);

@@ -1,15 +1,17 @@
-import type { ScanEvent } from "@/types/scan-events";
 import { getPostGISPool } from "@/lib/postgis";
 import { buildGridForState } from "./grid";
 import { getStateBbox } from "./state-bbox";
 import { scoreParcel } from "./parcel-scorer";
 import type { ParcelMetrics } from "./parcel-scorer";
 import type { ScanOptions, ScanResult } from "./run-scan";
-import { createAnalysisRun, completeAnalysisRun } from "@/lib/analysis-runs";
+import { createAnalysisRun, completeAnalysisRun, saveCandidateSites } from "@/lib/analysis-runs";
 import type { CandidateSite } from "@/types/domain";
+import type { Geometry } from "geojson";
 
 // NASA POWER endpoint for GHI
 const NASA_POWER_URL = "https://power.larc.nasa.gov/api/temporal/climatology/point";
+const DAYS_PER_YEAR = 365;
+const GHI_ROUNDING_FACTOR = 10;
 
 async function fetchGHI(lat: number, lng: number): Promise<number | null> {
   try {
@@ -85,22 +87,35 @@ export async function runParcelScan(
   const bbox = getStateBbox(stateCode);
   const bboxArr: [number, number, number, number] = [bbox.minLng, bbox.minLat, bbox.maxLng, bbox.maxLat];
 
-  emit({ type: "scan_started", stateCode, totalCells: 0, bbox: bboxArr, at: new Date().toISOString() });
-
   const passedSites: CandidateSite[] = [];
   const rejected_by: Record<string, number> = {};
   let processed = 0;
   let total = 0;
+  let rejected = 0;
 
   // Heartbeat state
   let currentStage = "initializing";
   let currentActivity = `Starting parcel scan for ${stateCode}`;
   const scanStart = Date.now();
 
+  emit({
+    type: "scan_started",
+    engine: "parcel",
+    stateCode,
+    totalParcels: 0,
+    processed: 0,
+    passed: 0,
+    rejected: 0,
+    currentStage,
+    bbox: bboxArr,
+    at: new Date().toISOString(),
+  });
+
   const heartbeatTimer = setInterval(() => {
     if (signal?.aborted) return;
     emit({
       type: "scan_heartbeat",
+      engine: "parcel",
       stage: currentStage,
       activity: currentActivity,
       processed,
@@ -116,17 +131,29 @@ export async function runParcelScan(
     currentActivity = `Identifying high-GHI hot zones for ${stateCode} via NASA POWER`;
     const hotZones = await findHotZones(stateCode, signal);
 
-    emit({
-      type: "hot_zone_identified",
-      count: hotZones.length,
-      stateCode,
-      at: new Date().toISOString(),
-    } as ScanEvent);
-
     // Stage 2: Query parcels in hot zones
     currentStage = "querying_parcels";
     currentActivity = `Querying parcels in ${hotZones.length} hot zone(s)`;
-    for (const zone of hotZones) {
+    const parcelsById = new Map<
+      number,
+      {
+        id: number;
+        apn: string | null;
+        source: string;
+        source_id: string;
+        state_code: string;
+        county_fips: string | null;
+        owner_type: string | null;
+        owner_name: string | null;
+        acres: number | null;
+        geom_json: string;
+        lng: number;
+        lat: number;
+        computed_acres: number;
+      }
+    >();
+
+    for (const [index, zone] of hotZones.entries()) {
       if (signal?.aborted) break;
 
       const [minLng, minLat, maxLng, maxLat] = zone.bbox;
@@ -160,22 +187,46 @@ export async function runParcelScan(
         }>;
       };
 
-      total += parcelResult.rows.length;
-
-      currentStage = "evaluating_parcels";
       for (const parcel of parcelResult.rows) {
-        if (signal?.aborted) break;
-        processed++;
-        currentActivity = `Evaluating parcel ${processed}/${total} (APN: ${parcel.apn ?? parcel.id}) — ${passedSites.length} passed`;
+        parcelsById.set(parcel.id, parcel);
+      }
 
-        emit({
-          type: "parcel_evaluated",
-          parcelId: String(parcel.id),
-          apn: parcel.apn,
-          stateCode: parcel.state_code,
-          at: new Date().toISOString(),
-        } as ScanEvent);
+      currentActivity = `Collected ${parcelsById.size} unique parcels from ${index + 1}/${hotZones.length} hot zone(s)`;
+    }
 
+    total = parcelsById.size;
+    currentStage = "evaluating_parcels";
+    currentActivity = `Evaluating 0/${total} parcels — 0 passed`;
+    emit({
+      type: "scan_started",
+      engine: "parcel",
+      stateCode,
+      totalParcels: total,
+      processed: 0,
+      passed: 0,
+      rejected: 0,
+      currentStage,
+      bbox: bboxArr,
+      at: new Date().toISOString(),
+    });
+    emit({
+      type: "tally_update",
+      engine: "parcel",
+      rejected_by: { ...rejected_by },
+      passed: 0,
+      rejected: 0,
+      processed: 0,
+      total,
+    });
+
+    for (const parcel of parcelsById.values()) {
+      if (signal?.aborted) break;
+      processed++;
+      currentActivity = `Evaluating parcel ${processed}/${total} (APN: ${parcel.apn ?? parcel.id}) — ${passedSites.length} passed`;
+      const centroid = { lat: parcel.lat, lng: parcel.lng };
+      const geometry = safeParseGeometry(parcel.geom_json);
+
+      try {
         // Compute metrics using PostGIS
         const metricsResult = (await pool.query(
           `SELECT
@@ -229,6 +280,7 @@ export async function runParcelScan(
         const spatialMetrics = metricsResult.rows[0];
         const totalAcres = parcel.acres ?? parcel.computed_acres;
         const ghi = await fetchGHI(parcel.lat, parcel.lng);
+        const annualGhi = toAnnualGhi(ghi);
 
         const metrics: ParcelMetrics = {
           total_acres: totalAcres,
@@ -329,28 +381,122 @@ export async function runParcelScan(
             in_flood_zone: metrics.in_flood_zone,
             flood_zone: metrics.flood_zone_code,
             distance_to_infra_km: metrics.distance_to_transmission_km,
+            annual_ghi_kwh_m2: annualGhi,
+            contiguous_acres: metrics.contiguous_usable_acres,
+            slope_pct: metrics.mean_slope_percent,
           };
 
           passedSites.push(site);
 
           emit({
-            type: "parcel_passed",
+            type: "parcel_result",
+            engine: "parcel",
             parcelId: String(parcel.id),
-            apn: parcel.apn,
+            status: "passed",
             score: scored.overall_score,
-            geojson: parcel.geom_json,
-            stateCode: parcel.state_code,
+            geometry,
+            centroid,
+            properties: {
+              apn: parcel.apn,
+              source: parcel.source,
+              source_id: parcel.source_id,
+              state_code: parcel.state_code,
+              county_fips: parcel.county_fips,
+              owner_type: parcel.owner_type,
+              owner_name: parcel.owner_name,
+              acres: totalAcres,
+              ghi_kwh_m2_day: metrics.ghi_kwh_m2_day,
+              nearest_transmission_kv: metrics.nearest_transmission_kv,
+              distance_to_transmission_km: metrics.distance_to_transmission_km,
+              distance_to_substation_km: metrics.distance_to_substation_km,
+            },
+            site,
+            processed,
+            passed: passedSites.length,
+            rejected,
+            total,
+            totalParcels: total,
+            currentStage,
             at: new Date().toISOString(),
-          } as ScanEvent);
+          });
         } else {
+          rejected++;
           emit({
-            type: "parcel_rejected",
+            type: "parcel_result",
+            engine: "parcel",
             parcelId: String(parcel.id),
+            status: "rejected",
+            score: scored.overall_score,
             reason: scored.rejection_reason ?? "unknown",
-            stateCode: parcel.state_code,
+            geometry,
+            centroid,
+            properties: {
+              apn: parcel.apn,
+              source: parcel.source,
+              source_id: parcel.source_id,
+              state_code: parcel.state_code,
+              county_fips: parcel.county_fips,
+              acres: totalAcres,
+              ghi_kwh_m2_day: metrics.ghi_kwh_m2_day,
+            },
+            processed,
+            passed: passedSites.length,
+            rejected,
+            total,
+            totalParcels: total,
+            currentStage,
             at: new Date().toISOString(),
-          } as ScanEvent);
+          });
         }
+      } catch (error) {
+        rejected++;
+        const reason = error instanceof Error ? error.message : "parcel_failed";
+        rejected_by.parcel_error = (rejected_by.parcel_error ?? 0) + 1;
+        emit({
+          type: "parcel_result",
+          engine: "parcel",
+          parcelId: String(parcel.id),
+          status: "error",
+          reason,
+          geometry,
+          centroid,
+          properties: {
+            apn: parcel.apn,
+            source: parcel.source,
+            source_id: parcel.source_id,
+            state_code: parcel.state_code,
+            county_fips: parcel.county_fips,
+          },
+          processed,
+          passed: passedSites.length,
+          rejected,
+          total,
+          totalParcels: total,
+          currentStage,
+          at: new Date().toISOString(),
+        });
+      }
+
+      if (processed % 10 === 0 || processed === total) {
+        emit({
+          type: "tally_update",
+          engine: "parcel",
+          rejected_by: { ...rejected_by },
+          passed: passedSites.length,
+          rejected,
+          processed,
+          total,
+        });
+      }
+    }
+
+    currentStage = "persisting_results";
+    currentActivity = `Saving ${passedSites.length} parcel candidates`;
+    if (run && passedSites.length > 0) {
+      try {
+        await saveCandidateSites(run.id, passedSites.map((site) => ({ ...site, run_id: run.id })));
+      } catch {
+        // non-fatal
       }
     }
 
@@ -366,6 +512,7 @@ export async function runParcelScan(
 
     emit({
       type: "scan_completed",
+      engine: "parcel",
       runId: run?.id ?? null,
       passed: passedSites.length,
       total,
@@ -395,9 +542,48 @@ export async function runParcelScan(
         // non-fatal
       }
     }
-    emit({ type: "scan_error", message: msg, stage: currentStage, cancelled, at: new Date().toISOString() });
+    emit({
+      type: "scan_error",
+      engine: "parcel",
+      message: msg,
+      stage: currentStage,
+      cancelled,
+      at: new Date().toISOString(),
+    });
     throw error;
   } finally {
     clearInterval(heartbeatTimer);
+  }
+}
+
+function safeParseGeometry(value: string): Geometry | undefined {
+  try {
+    const parsed = JSON.parse(value);
+    return isGeometry(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function toAnnualGhi(ghiKwhM2Day: number | null): number | null {
+  if (ghiKwhM2Day === null) return null;
+  return Math.round(ghiKwhM2Day * DAYS_PER_YEAR * GHI_ROUNDING_FACTOR) / GHI_ROUNDING_FACTOR;
+}
+
+function isGeometry(value: unknown): value is Geometry {
+  if (!value || typeof value !== "object") return false;
+  const geometry = value as { type?: unknown; coordinates?: unknown; geometries?: unknown };
+  switch (geometry.type) {
+    case "Point":
+    case "MultiPoint":
+    case "LineString":
+    case "MultiLineString":
+    case "Polygon":
+    case "MultiPolygon":
+      return "coordinates" in geometry;
+    case "GeometryCollection":
+      return Array.isArray(geometry.geometries);
+    default:
+      return false;
   }
 }

@@ -1,11 +1,20 @@
+import type { Geometry } from "geojson";
 import type { CandidateSite } from "./domain";
+
+export type ScanEngine = "grid" | "parcel";
 
 export type ScanEvent =
   | {
       type: "scan_started";
+      engine: ScanEngine;
       stateCode: string;
-      totalCells: number;
-      bbox: [number, number, number, number];
+      totalCells?: number;
+      totalParcels?: number;
+      processed: number;
+      passed: number;
+      rejected: number;
+      currentStage: string;
+      bbox?: [number, number, number, number];
       at: string;
     }
   | {
@@ -31,13 +40,16 @@ export type ScanEvent =
     }
   | {
       type: "tally_update";
+      engine?: ScanEngine;
       rejected_by: Record<string, number>;
       passed: number;
+      rejected?: number;
       processed: number;
       total: number;
     }
   | {
       type: "scan_completed";
+      engine?: ScanEngine;
       runId: number | null;
       passed: number;
       total: number;
@@ -46,6 +58,7 @@ export type ScanEvent =
     }
   | {
       type: "scan_error";
+      engine?: ScanEngine;
       message: string;
       /** The analysis stage where the error occurred, e.g. "scanning_cells" */
       stage?: string;
@@ -55,6 +68,7 @@ export type ScanEvent =
     }
   | {
       type: "scan_heartbeat";
+      engine?: ScanEngine;
       /** Current processing stage label */
       stage: string;
       /** Human-readable description of what is happening right now */
@@ -65,31 +79,21 @@ export type ScanEvent =
       at: string;
     }
   | {
-      type: "hot_zone_identified";
-      count: number;
-      stateCode: string;
-      at: string;
-    }
-  | {
-      type: "parcel_evaluated";
+      type: "parcel_result";
+      engine: "parcel";
       parcelId: string;
-      apn: string | null;
-      stateCode: string;
-      at: string;
-    }
-  | {
-      type: "parcel_passed";
-      parcelId: string;
-      apn: string | null;
-      score: number;
-      geojson: string;
-      stateCode: string;
-      at: string;
-    }
-  | {
-      type: "parcel_rejected";
-      parcelId: string;
-      reason: string;
-      stateCode: string;
+      status: "passed" | "rejected" | "error";
+      score?: number;
+      reason?: string;
+      geometry?: Geometry;
+      centroid?: { lat: number; lng: number };
+      properties?: Record<string, unknown>;
+      site?: CandidateSite;
+      processed: number;
+      passed: number;
+      rejected: number;
+      total: number;
+      totalParcels: number;
+      currentStage: string;
       at: string;
     };

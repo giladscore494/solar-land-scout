@@ -53,6 +53,7 @@ export async function runStateScan(
     if (signal?.aborted) return;
     emit({
       type: "scan_heartbeat",
+      engine: "grid",
       stage: currentStage,
       activity: currentActivity,
       processed,
@@ -66,7 +67,18 @@ export async function runStateScan(
     // 2. Build grid
     currentStage = "building_grid";
     currentActivity = `Building ${sizeKm}km grid for ${stateCode}`;
-    emit({ type: "scan_started", stateCode, totalCells: 0, bbox: bboxArr, at: new Date().toISOString() });
+    emit({
+      type: "scan_started",
+      engine: "grid",
+      stateCode,
+      totalCells: 0,
+      processed: 0,
+      passed: 0,
+      rejected: 0,
+      currentStage,
+      bbox: bboxArr,
+      at: new Date().toISOString(),
+    });
 
     const allCells = buildGridForState(stateCode, sizeKm);
     currentActivity = `Grid built: ${allCells.length} cells`;
@@ -86,7 +98,18 @@ export async function runStateScan(
       currentActivity = `Pre-filter skipped (${err instanceof Error ? err.message : "error"}), scanning all ${allCells.length} cells`;
     }
 
-    emit({ type: "scan_started", stateCode, totalCells: kept.length, bbox: bboxArr, at: new Date().toISOString() });
+    emit({
+      type: "scan_started",
+      engine: "grid",
+      stateCode,
+      totalCells: kept.length,
+      processed: 0,
+      passed: 0,
+      rejected: 0,
+      currentStage,
+      bbox: bboxArr,
+      at: new Date().toISOString(),
+    });
 
     // 4. Track state
     const rejected_by: Record<string, number> = {};
@@ -164,8 +187,10 @@ export async function runStateScan(
         if (processed % 10 === 0) {
           emit({
             type: "tally_update",
+            engine: "grid",
             rejected_by: { ...rejected_by },
             passed: passedSites.length,
+            rejected: processed - passedSites.length,
             processed,
             total,
           });
@@ -212,14 +237,17 @@ export async function runStateScan(
     // Final tally
     emit({
       type: "tally_update",
+      engine: "grid",
       rejected_by: { ...rejected_by },
       passed: passedSites.length,
+      rejected: processed - passedSites.length,
       processed,
       total,
     });
 
     emit({
       type: "scan_completed",
+      engine: "grid",
       runId: run?.id ?? null,
       passed: passedSites.length,
       total,
@@ -249,7 +277,14 @@ export async function runStateScan(
         // non-fatal
       }
     }
-    emit({ type: "scan_error", message: msg, stage: currentStage, cancelled, at: new Date().toISOString() });
+    emit({
+      type: "scan_error",
+      engine: "grid",
+      message: msg,
+      stage: currentStage,
+      cancelled,
+      at: new Date().toISOString(),
+    });
     throw error;
   } finally {
     clearInterval(heartbeatTimer);
