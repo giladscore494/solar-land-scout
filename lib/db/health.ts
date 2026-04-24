@@ -240,7 +240,7 @@ export function summarizeDbHealth(result: DbHealthResult): ScanDbHealthSummary {
     blocking_missing_columns: result.blocking_missing_columns,
     optional_missing_columns: result.optional_missing_columns,
     missing_indexes: result.missing_indexes,
-    parcels_for_state: result.counts.parcels_for_state,
+    parcels_for_state: result.effective_parcels_for_state ?? result.counts.parcels_for_state,
     unified_parcels_for_state: result.counts.unified_parcels_for_state,
     warnings: result.warnings,
     reason: result.reason,
@@ -524,33 +524,6 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
   const scannerRelation = result.database_connected ? await detectScannerParcelRelation(db, stateCode) : "parcels";
   result.scanner_relation = scannerRelation;
 
-  if (
-    existingTables.has("parcels") &&
-    !result.reason &&
-    (!stateCode || (result.scanner_parcels_for_state ?? result.counts.parcels_for_state ?? 0) > 0)
-  ) {
-    try {
-      await measure(result, "query_sanity", async () => {
-        const relation = scannerRelation === "scanner_parcels" ? "scanner_parcels" : "parcels";
-        if (stateCode) {
-          await db.query(
-            `SELECT id FROM ${relation} WHERE state_code = $1 AND geom IS NOT NULL LIMIT 1`,
-            [stateCode]
-          );
-        } else {
-          await db.query(`SELECT id FROM ${relation} WHERE geom IS NOT NULL LIMIT 1`);
-        }
-      });
-    } catch (error) {
-      pushWarning(
-        result,
-        isTimeoutError(error)
-          ? `Parcel sanity query timed out after ${getPostgisQueryTimeoutMs()}ms`
-          : "Parcel sanity query failed"
-      );
-    }
-  }
-
   if (stateCode) {
     try {
       result.parcel_coverage = await getParcelCoverageSummary(db, stateCode);
@@ -581,7 +554,6 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
   });
 
   result.effective_parcels_for_state = parcelEngine.effectiveParcelsForState;
-  result.counts.parcels_for_state = parcelEngine.effectiveParcelsForState ?? (stateCode ? 0 : null);
   result.reason = parcelEngine.reason;
   result.parcel_engine_usable = parcelEngine.parcelEngineUsable;
 
@@ -590,6 +562,33 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
   }
   if (stateCode && parcelEngine.effectiveParcelsForState === 0) {
     pushWarning(result, `No parcels found for state ${stateCode}`);
+  }
+
+  if (
+    existingTables.has("parcels") &&
+    !result.reason &&
+    (!stateCode || (result.effective_parcels_for_state ?? 0) > 0)
+  ) {
+    try {
+      await measure(result, "query_sanity", async () => {
+        const relation = result.scanner_relation === "scanner_parcels" ? "scanner_parcels" : "parcels";
+        if (stateCode) {
+          await db.query(
+            `SELECT id FROM ${relation} WHERE state_code = $1 AND geom IS NOT NULL LIMIT 1`,
+            [stateCode]
+          );
+        } else {
+          await db.query(`SELECT id FROM ${relation} WHERE geom IS NOT NULL LIMIT 1`);
+        }
+      });
+    } catch (error) {
+      pushWarning(
+        result,
+        isTimeoutError(error)
+          ? `Parcel sanity query timed out after ${getPostgisQueryTimeoutMs()}ms`
+          : "Parcel sanity query failed"
+      );
+    }
   }
 
   result.ok =
