@@ -90,6 +90,21 @@ function pushWarning(result: DbHealthResult, warning: string): void {
   }
 }
 
+function tableSql(table: RequiredTable): string {
+  switch (table) {
+    case "parcels":
+      return "parcels";
+    case "transmission_lines":
+      return "transmission_lines";
+    case "substations":
+      return "substations";
+    case "protected_areas":
+      return "protected_areas";
+    case "flood_zones":
+      return "flood_zones";
+  }
+}
+
 async function measure<T>(
   result: DbHealthResult,
   key: string,
@@ -252,8 +267,8 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
   result.counts = await measure(result, "counts", async () => {
     const counts: DbHealthCounts = { ...EMPTY_COUNTS, parcels_for_state: stateCode ? 0 : null };
 
-    async function countTable(table: string): Promise<number> {
-      const query = (await db.query(`SELECT COUNT(*)::bigint::text AS count FROM ${table}`)) as {
+    async function countTable(table: RequiredTable): Promise<number> {
+      const query = (await db.query(`SELECT COUNT(*)::bigint::text AS count FROM ${tableSql(table)}`)) as {
         rows: Array<{ count: string }>;
       };
       return Number(query.rows[0]?.count ?? 0);
@@ -285,7 +300,7 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
            COUNT(*)::bigint::text AS total,
            COUNT(*) FILTER (WHERE geom IS NULL)::bigint::text AS geom_nulls,
            COUNT(*) FILTER (WHERE geom IS NOT NULL AND ST_SRID(geom) = 0)::bigint::text AS srid_zero
-         FROM ${table}`
+         FROM ${tableSql(table)}`
       )) as { rows: Array<{ total: string; geom_nulls: string; srid_zero: string }> };
       const row = sanity.rows[0];
       const total = Number(row?.total ?? 0);
