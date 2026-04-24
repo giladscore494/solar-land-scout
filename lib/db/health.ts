@@ -12,14 +12,40 @@ const REQUIRED_TABLES = [
 
 type RequiredTable = (typeof REQUIRED_TABLES)[number];
 
-const REQUIRED_COLUMNS: Record<RequiredTable, string[]> = {
-  // These are the public readiness columns the parcel engine/debug UI expect after
-  // the migration backfills compatibility values from legacy importer columns.
-  parcels: ["id", "state_code", "geom", "owner_name", "zoning", "county", "source", "updated_at"],
-  transmission_lines: ["id", "geom", "source", "updated_at"],
-  substations: ["id", "geom", "source", "updated_at"],
-  protected_areas: ["id", "name", "category", "geom", "source", "updated_at"],
-  flood_zones: ["id", "zone", "geom", "source", "updated_at"],
+const REQUIRED_RUNTIME_COLUMNS: Record<RequiredTable, string[]> = {
+  parcels: ["id", "state_code", "geom"],
+  transmission_lines: ["id", "geom"],
+  substations: ["id", "geom"],
+  protected_areas: ["id", "geom"],
+  flood_zones: ["id", "geom"],
+};
+
+const OPTIONAL_METADATA_COLUMNS: Record<RequiredTable, string[]> = {
+  parcels: [
+    "zoning",
+    "county",
+    "updated_at",
+    "area_acres",
+    "owner_name",
+    "source",
+    "source_id",
+    "county_fips",
+    "acres",
+    "centroid",
+    "bbox",
+  ],
+  transmission_lines: ["source", "updated_at", "voltage_kv", "owner", "status"],
+  substations: ["source", "updated_at", "name", "max_voltage_kv", "owner", "status"],
+  protected_areas: [
+    "category",
+    "updated_at",
+    "name",
+    "source",
+    "source_id",
+    "designation",
+    "managing_agency",
+  ],
+  flood_zones: ["zone", "source", "updated_at", "flood_zone", "sfha", "source_id"],
 };
 
 const INDEX_TARGETS: Array<{ table: RequiredTable; name: string }> = [
@@ -58,6 +84,8 @@ function makeBaseResult(stateCode?: string | null): DbHealthResult {
     },
     missing_tables: [...REQUIRED_TABLES],
     missing_columns: {},
+    blocking_missing_columns: {},
+    optional_missing_columns: {},
     missing_indexes: [],
     counts: {
       ...EMPTY_COUNTS,
@@ -90,6 +118,12 @@ function pushWarning(result: DbHealthResult, warning: string): void {
   }
 }
 
+function setReason(result: DbHealthResult, reason: string): void {
+  if (!result.reason) {
+    result.reason = reason;
+  }
+}
+
 function tableSql(table: RequiredTable): string {
   switch (table) {
     case "parcels":
@@ -118,13 +152,28 @@ async function measure<T>(
   }
 }
 
+function getOptionalColumnsForTable(table: RequiredTable, columns: Set<string>): string[] {
+  return OPTIONAL_METADATA_COLUMNS[table].filter((column) => {
+    if (column === "area_acres" && !columns.has("geom")) {
+      return false;
+    }
+    return !columns.has(column);
+  });
+}
+
+function hasBlockingMissingColumns(result: DbHealthResult): boolean {
+  return Object.keys(result.blocking_missing_columns).length > 0;
+}
+
 export function summarizeDbHealth(result: DbHealthResult): ScanDbHealthSummary {
   return {
     selected_url_env: result.selected_url_env,
     database_connected: result.database_connected,
     postgis_available: result.postgis_available,
     missing_tables: result.missing_tables,
-    missing_columns: result.missing_columns,
+    missing_columns: result.blocking_missing_columns,
+    blocking_missing_columns: result.blocking_missing_columns,
+    optional_missing_columns: result.optional_missing_columns,
     missing_indexes: result.missing_indexes,
     parcels_for_state: result.counts.parcels_for_state,
     warnings: result.warnings,
@@ -136,7 +185,9 @@ export function getParcelEngineFallbackReason(result: DbHealthResult): string | 
   if (result.ok) return null;
   if (result.reason) return result.reason;
   if (result.missing_tables.length > 0) return "PARCEL_TABLES_MISSING";
-  if (Object.keys(result.missing_columns).length > 0) return "PARCEL_COLUMNS_MISSING";
+  if (hasBlockingMissingColumns(result)) return "PARCEL_REQUIRED_COLUMNS_MISSING";
+  if (result.missing_indexes.length > 0) return "PARCEL_REQUIRED_INDEXES_MISSING";
+  if (result.counts.parcels_for_state === 0) return "PARCEL_STATE_EMPTY";
   return "PARCEL_ENGINE_UNAVAILABLE";
 }
 
@@ -149,14 +200,17 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
   result.url_kind = selection.urlKind;
 
   if (!selection.url) {
-    result.reason = "DATABASE_URL_MISSING";
+    result.reason = "DB_ENV_MISSING";
     result.elapsed_ms = Date.now() - started;
     return result;
   }
 
   const pool = await getPostGISPool();
   if (!pool) {
-    result.reason = getPostGISLoadError() ? "DATABASE_DRIVER_LOAD_FAILED" : "DATABASE_POOL_UNAVAILABLE";
+    result.reason = "DB_CONNECTION_FAILED";
+    if (getPostGISLoadError()) {
+      pushWarning(result, "PostGIS driver failed to load");
+    }
     result.elapsed_ms = Date.now() - started;
     return result;
   }
@@ -168,7 +222,13 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
       result.database_connected = true;
     });
   } catch (error) {
-    result.reason = isTimeoutError(error) ? "DATABASE_CONNECTION_TIMEOUT" : "DATABASE_CONNECTION_FAILED";
+    result.reason = "DB_CONNECTION_FAILED";
+    pushWarning(
+      result,
+      isTimeoutError(error)
+        ? `Database connection timed out after ${getPostgisQueryTimeoutMs()}ms`
+        : "Database connection failed"
+    );
     result.elapsed_ms = Date.now() - started;
     return result;
   }
@@ -205,7 +265,7 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
   };
 
   if (result.missing_tables.length > 0) {
-    result.reason = "PARCEL_TABLES_MISSING";
+    setReason(result, "PARCEL_TABLES_MISSING");
   }
 
   const existingColumns = await measure(result, "columns", async () => {
@@ -228,19 +288,25 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
   for (const table of REQUIRED_TABLES) {
     if (!existingTables.has(table)) continue;
     const columns = existingColumns.get(table) ?? new Set<string>();
-    const missing = REQUIRED_COLUMNS[table].filter((column) => !columns.has(column));
-    if (table === "parcels" && !columns.has("area_acres")) {
-      if (columns.has("geom")) {
-        pushWarning(result, "parcels.area_acres missing; using geometry area fallback");
-      }
+    const blockingMissing = REQUIRED_RUNTIME_COLUMNS[table].filter((column) => !columns.has(column));
+    const optionalMissing = getOptionalColumnsForTable(table, columns);
+
+    if (blockingMissing.length > 0) {
+      result.blocking_missing_columns[table] = blockingMissing;
     }
-    if (missing.length > 0) {
-      result.missing_columns[table] = missing;
+    if (optionalMissing.length > 0) {
+      result.optional_missing_columns[table] = optionalMissing;
+      pushWarning(result, `${table} optional columns missing: ${optionalMissing.join(", ")}`);
+    }
+    if (table === "parcels" && optionalMissing.includes("area_acres") && columns.has("geom")) {
+      pushWarning(result, "parcels.area_acres missing; using geometry area fallback");
     }
   }
 
-  if (Object.keys(result.missing_columns).length > 0 && !result.reason) {
-    result.reason = "PARCEL_COLUMNS_MISSING";
+  result.missing_columns = result.blocking_missing_columns;
+
+  if (hasBlockingMissingColumns(result)) {
+    setReason(result, "PARCEL_REQUIRED_COLUMNS_MISSING");
   }
 
   result.missing_indexes = await measure(result, "indexes", async () => {
@@ -262,6 +328,7 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
 
   if (result.missing_indexes.length > 0) {
     pushWarning(result, `Missing GiST indexes: ${result.missing_indexes.join(", ")}`);
+    setReason(result, "PARCEL_REQUIRED_INDEXES_MISSING");
   }
 
   result.counts = await measure(result, "counts", async () => {
@@ -323,19 +390,22 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
     }
   });
 
-  if (result.counts.parcels_total === 0 && existingTables.has("parcels") && !result.reason) {
-    result.reason = "NO_PARCEL_DATA";
+  if (result.counts.parcels_total === 0 && existingTables.has("parcels")) {
     pushWarning(result, "parcels table is empty; parcel scans will fall back to grid mode");
   }
 
   if (stateCode && result.counts.parcels_for_state === 0) {
     pushWarning(result, `No parcels found for state ${stateCode}`);
     if (!result.reason) {
-      result.reason = "NO_PARCELS_FOR_STATE";
+      result.reason = "PARCEL_STATE_EMPTY";
     }
   }
 
-  if (existingTables.has("parcels") && (!result.reason || result.reason === "NO_PARCELS_FOR_STATE")) {
+  if (
+    existingTables.has("parcels") &&
+    !result.reason &&
+    (!stateCode || result.counts.parcels_for_state === null || result.counts.parcels_for_state > 0)
+  ) {
     try {
       await measure(result, "query_sanity", async () => {
         if (stateCode) {
@@ -348,8 +418,12 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
         }
       });
     } catch (error) {
-      result.reason = isTimeoutError(error) ? "PARCEL_QUERY_TIMEOUT" : "PARCEL_QUERY_FAILED";
-      pushWarning(result, `Parcel sanity query failed after ${getPostgisQueryTimeoutMs()}ms timeout budget`);
+      pushWarning(
+        result,
+        isTimeoutError(error)
+          ? `Parcel sanity query timed out after ${getPostgisQueryTimeoutMs()}ms`
+          : "Parcel sanity query failed"
+      );
     }
   }
 
@@ -357,7 +431,8 @@ export async function checkDatabaseHealth(options: HealthOptions = {}): Promise<
     result.database_connected &&
     result.postgis_available &&
     result.missing_tables.length === 0 &&
-    Object.keys(result.missing_columns).length === 0 &&
+    !hasBlockingMissingColumns(result) &&
+    result.missing_indexes.length === 0 &&
     !result.reason;
   result.elapsed_ms = Date.now() - started;
   return result;

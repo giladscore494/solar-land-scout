@@ -60,6 +60,8 @@ export async function POST(req: NextRequest) {
         passing: result.passed,
         sites: result.sites,
         all_candidates: result.sites,
+        borderline_candidates: result.scan_summary?.top_20_borderline_candidates ?? [],
+        scan_summary: result.scan_summary,
         rejected_by: result.rejected_by,
         engine,
         requested_engine: requestedEngine,
@@ -73,6 +75,7 @@ export async function POST(req: NextRequest) {
           total_generated: result.total,
           total_passing_strict: result.passed,
           rejected_by: result.rejected_by,
+          scan_summary: result.scan_summary,
         },
       });
     } catch (error) {

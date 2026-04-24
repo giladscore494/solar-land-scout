@@ -13,11 +13,8 @@ export async function GET(req: NextRequest) {
   const stateCode = req.nextUrl.searchParams.get("state_code")?.trim().toUpperCase() ?? null;
   const health = await checkDatabaseHealth({ stateCode });
   const hardUnavailable =
-    health.reason === "DATABASE_URL_MISSING" ||
-    health.reason === "DATABASE_DRIVER_LOAD_FAILED" ||
-    health.reason === "DATABASE_POOL_UNAVAILABLE" ||
-    health.reason === "DATABASE_CONNECTION_TIMEOUT" ||
-    health.reason === "DATABASE_CONNECTION_FAILED" ||
+    health.reason === "DB_ENV_MISSING" ||
+    health.reason === "DB_CONNECTION_FAILED" ||
     health.reason === "POSTGIS_NOT_AVAILABLE";
 
   return NextResponse.json(health, {

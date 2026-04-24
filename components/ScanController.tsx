@@ -5,6 +5,7 @@ import type { Geometry } from "geojson";
 import type { CandidateSite } from "@/types/domain";
 import type { ScanEngine, ScanEvent, HotZoneProgressEvent } from "@/types/scan-events";
 import type { ScanDbHealthSummary } from "@/types/db-health";
+import type { GridCellDiagnostics, GridScanSummary } from "@/types/grid-scan";
 
 const MAX_DEBUG_LOG_SIZE = 10;
 
@@ -42,6 +43,13 @@ export interface ScanState {
   lastServerEventAt: string | null;
   runId: number | null;
   debugLog: string[];
+  gridSummary: GridScanSummary | null;
+  recentRejectedCells: Array<{
+    cellId: string;
+    reason: string;
+    verdict: "soft_reject" | "hard_reject";
+    diagnostics: GridCellDiagnostics;
+  }>;
   passedSiteIds: Set<string>;
   cellResults: Map<string, { verdict: "passed" | "soft_reject" | "hard_reject"; bbox: [number, number, number, number] }>;
   parcelResults: Map<
@@ -91,6 +99,8 @@ const initialState: ScanState = {
   lastServerEventAt: null,
   runId: null,
   debugLog: [],
+  gridSummary: null,
+  recentRejectedCells: [],
   passedSiteIds: new Set(),
   cellResults: new Map(),
   parcelResults: new Map(),
@@ -141,11 +151,24 @@ function reducer(state: ScanState, action: ScanAction): ScanState {
       if (action.event.verdict === "passed" && action.event.site) {
         nextPassedSiteIds.add(action.event.site.id);
       }
+      const recentRejectedCells =
+        action.event.verdict !== "passed" && action.event.diagnostics
+          ? [
+              {
+                cellId: action.event.cellId,
+                reason: action.event.rejectionReason,
+                verdict: action.event.verdict,
+                diagnostics: action.event.diagnostics,
+              },
+              ...state.recentRejectedCells,
+            ].slice(0, 20)
+          : state.recentRejectedCells;
       return {
         ...state,
         engine: "grid",
         currentCellId: action.event.cellId,
         cellResults: newMap,
+        recentRejectedCells,
         passedSiteIds: nextPassedSiteIds,
         passedSites:
           action.event.verdict === "passed" && action.event.site && !state.passedSiteIds.has(action.event.site.id)
@@ -233,6 +256,7 @@ function reducer(state: ScanState, action: ScanAction): ScanState {
         runId: action.event.runId,
         progress: { processed: action.event.total, total: action.event.total },
         tally: { rejected_by: action.event.rejected_by, passed: action.event.passed },
+        gridSummary: action.event.scan_summary ?? state.gridSummary,
         currentStage: "done",
         activityLine: `Scan complete — ${action.event.passed} sites passed out of ${action.event.total} ${
           completedEngine === "parcel" ? "parcels" : "cells"
@@ -444,24 +468,20 @@ function appendDebug(lines: string[], next: string): string[] {
 function describeFallbackReason(reason: string): string {
   switch (reason) {
     case "DATABASE_URL_MISSING":
+    case "DB_ENV_MISSING":
       return "database URL missing";
-    case "DATABASE_DRIVER_LOAD_FAILED":
-    case "DATABASE_POOL_UNAVAILABLE":
-    case "DATABASE_CONNECTION_FAILED":
-    case "DATABASE_CONNECTION_TIMEOUT":
+    case "DB_CONNECTION_FAILED":
       return "database connection unavailable";
     case "POSTGIS_NOT_AVAILABLE":
       return "PostGIS extension unavailable";
     case "PARCEL_TABLES_MISSING":
       return "required parcel tables are missing";
-    case "PARCEL_COLUMNS_MISSING":
-      return "required parcel columns are missing";
-    case "NO_PARCEL_DATA":
-      return "parcel tables are empty";
-    case "NO_PARCELS_FOR_STATE":
+    case "PARCEL_REQUIRED_COLUMNS_MISSING":
+      return "required parcel runtime columns are missing";
+    case "PARCEL_REQUIRED_INDEXES_MISSING":
+      return "required parcel indexes are missing";
+    case "PARCEL_STATE_EMPTY":
       return "no parcel data exists for this state";
-    case "PARCEL_QUERY_TIMEOUT":
-      return "parcel query timed out";
     default:
       return reason.toLowerCase().replaceAll("_", " ");
   }

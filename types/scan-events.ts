@@ -1,6 +1,7 @@
 import type { Geometry } from "geojson";
 import type { CandidateSite } from "./domain";
 import type { ScanDbHealthSummary } from "./db-health";
+import type { GridCellDiagnostics, GridScanSummary } from "./grid-scan";
 
 export type ScanEngine = "grid" | "parcel";
 
@@ -46,6 +47,7 @@ export type ScanEvent =
       verdict: "passed" | "soft_reject" | "hard_reject";
       rejectionReason: string;
       site?: CandidateSite;
+      diagnostics?: GridCellDiagnostics;
     }
   | {
       type: "insight";
@@ -72,6 +74,7 @@ export type ScanEvent =
       passed: number;
       total: number;
       rejected_by: Record<string, number>;
+      scan_summary?: GridScanSummary;
       at: string;
     }
   | {
@@ -81,18 +84,14 @@ export type ScanEvent =
       fallbackReason?: string | null;
       db_health?: ScanDbHealthSummary;
       message: string;
-      /** The analysis stage where the error occurred, e.g. "scanning_cells" */
       stage?: string;
-      /** True when the scan was explicitly cancelled by the client */
       cancelled?: boolean;
       at: string;
     }
   | {
       type: "scan_heartbeat";
       engine?: ScanEngine;
-      /** Current processing stage label */
       stage: string;
-      /** Human-readable description of what is happening right now */
       activity: string;
       requestedEngine?: ScanEngine;
       fallbackReason?: string | null;

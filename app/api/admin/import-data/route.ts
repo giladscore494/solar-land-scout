@@ -37,13 +37,13 @@ export async function POST(req: NextRequest) {
   }
 
   const health = await checkDatabaseHealth();
-  if (health.missing_tables.length > 0 || Object.keys(health.missing_columns).length > 0) {
+  if (health.missing_tables.length > 0 || Object.keys(health.blocking_missing_columns).length > 0) {
     return new Response(
       JSON.stringify({
         error: "spatial_schema_not_ready",
         reason: health.reason,
         missing_tables: health.missing_tables,
-        missing_columns: health.missing_columns,
+        missing_columns: health.blocking_missing_columns,
         hint: "Run db/migrations/001_create_parcel_scan_tables.sql before importing data.",
       }),
       { status: 503, headers: { "Content-Type": "application/json" } }

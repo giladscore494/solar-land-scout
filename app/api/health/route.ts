@@ -136,16 +136,16 @@ export async function GET() {
 
   if (env.spatial_database.configured) {
     const health = await checkDatabaseHealth();
-    spatial_database.driver_installed = health.reason !== "DATABASE_DRIVER_LOAD_FAILED";
+    spatial_database.driver_installed = !health.warnings.includes("PostGIS driver failed to load");
     spatial_database.connected = health.database_connected;
     spatial_database.latency_ms = health.step_elapsed_ms?.connection ?? 0;
     spatial_database.schema_ready =
-      health.missing_tables.length === 0 && Object.keys(health.missing_columns).length === 0;
+      health.missing_tables.length === 0 && Object.keys(health.blocking_missing_columns).length === 0;
     spatial_database.postgis_version = health.postgis_available ? "available" : null;
     spatial_database.parcels_count = health.counts.parcels_total;
     spatial_database.transmission_count = health.counts.transmission_lines_total;
     spatial_database.error = health.ok ? null : health.reason;
-    if (health.reason === "DATABASE_DRIVER_LOAD_FAILED") {
+    if (health.reason === "DB_CONNECTION_FAILED") {
       spatial_database.driver_load_error = spatial_database.error;
     }
   }

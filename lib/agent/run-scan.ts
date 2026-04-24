@@ -1,11 +1,16 @@
 import type { CandidateSite } from "@/types/domain";
 import type { ScanEvent, ScanEngine } from "@/types/scan-events";
 import type { ScanDbHealthSummary } from "@/types/db-health";
+import type {
+  GridCandidateExample,
+  GridCellDiagnostics,
+  GridRejectedExample,
+  GridScanSummary,
+} from "@/types/grid-scan";
 import { buildGridForState } from "./grid";
 import { prefilterCells } from "./prefilter";
 import { runWorkerPool } from "./worker-pool";
 import { processCell } from "./process-cell";
-import type { RejectionReason } from "./process-cell";
 import { getStateBbox } from "./state-bbox";
 import { createAnalysisRun, completeAnalysisRun, saveCandidateSites } from "@/lib/analysis-runs";
 import { getPostgresPool } from "@/lib/postgres";
@@ -28,10 +33,14 @@ export interface ScanResult {
   total: number;
   rejected_by: Record<string, number>;
   sites: CandidateSite[];
+  scan_summary?: GridScanSummary;
 }
 
 const MAX_GEMINI_CALLS = 25;
 const GEMINI_BATCH_SIZE = 10;
+// Arizona currently scans as a 50x50 capped grid, so 2500 processed cells means
+// the sanity check is evaluating the full planned coverage instead of a partial run.
+const AZ_SANITY_CHECK_MIN_CELLS = 2500;
 
 export async function runStateScan(
   stateCode: string,
@@ -45,13 +54,10 @@ export async function runStateScan(
     db_health: dbHealth,
   };
 
-  // 1. Create analysis run
   const run = await createAnalysisRun(stateCode, "en");
-
   const bbox = getStateBbox(stateCode);
   const bboxArr: [number, number, number, number] = [bbox.minLng, bbox.minLat, bbox.maxLng, bbox.maxLat];
 
-  // Heartbeat state
   let currentStage = "initializing";
   let currentActivity = `Starting grid scan for ${stateCode}`;
   let processed = 0;
@@ -74,7 +80,6 @@ export async function runStateScan(
   }, 1000);
 
   try {
-    // 2. Build grid
     currentStage = "building_grid";
     currentActivity = `Building ${sizeKm}km grid for ${stateCode}`;
     emit({
@@ -94,7 +99,6 @@ export async function runStateScan(
     const allCells = buildGridForState(stateCode, sizeKm);
     currentActivity = `Grid built: ${allCells.length} cells`;
 
-    // 3. Prefilter
     currentStage = "prefiltering";
     currentActivity = `Pre-filtering ${allCells.length} cells via NASA POWER`;
     let kept = allCells;
@@ -103,7 +107,6 @@ export async function runStateScan(
       kept = prefilterResult.kept;
       currentActivity = `Pre-filter complete: ${kept.length}/${allCells.length} cells kept`;
     } catch (err) {
-      // NASA POWER is optional — if prefilter fails, proceed with all cells
       console.warn("[runStateScan] prefilter failed, keeping all cells:", err);
       kept = allCells;
       currentActivity = `Pre-filter skipped (${err instanceof Error ? err.message : "error"}), scanning all ${allCells.length} cells`;
@@ -123,14 +126,19 @@ export async function runStateScan(
       at: new Date().toISOString(),
     });
 
-    // 4. Track state
     const rejected_by: Record<string, number> = {};
+    const hardRejectCounts: Record<string, number> = {};
     const passedSites: CandidateSite[] = [];
+    const borderlineCandidates: GridCandidateExample[] = [];
+    const rejectedExamples: GridRejectedExample[] = [];
+    const metricSamples = {
+      mean_slope_percent: [] as number[],
+      open_land_pct: [] as number[],
+      ghi_kwh_m2_day: [] as number[],
+    };
     let geminiCallCount = 0;
     let lastGeminiTime = 0;
     total = kept.length;
-
-    // Insight accumulator
     const recentResults: string[] = [];
 
     async function maybeEmitInsight(force = false): Promise<void> {
@@ -149,7 +157,6 @@ export async function runStateScan(
       emit({ type: "insight", text, cellsCovered: processed, at: new Date().toISOString() });
     }
 
-    // 5. Run worker pool
     currentStage = "scanning_cells";
     currentActivity = `Scanning 0/${total} cells`;
     await runWorkerPool({
@@ -161,41 +168,69 @@ export async function runStateScan(
         if (!result) return;
         processed++;
 
-        const { site, rejectionReason } = result;
+        const { site, rejectionReason, diagnostics } = result;
+        const hardReject = isHardReject(site, diagnostics);
+        const verdict =
+          diagnostics.candidate_kind === "strict_pass"
+            ? "passed"
+            : hardReject
+            ? "hard_reject"
+            : "soft_reject";
 
-        // Tally rejection
+        if (diagnostics.metrics.mean_slope_percent !== null) {
+          metricSamples.mean_slope_percent.push(diagnostics.metrics.mean_slope_percent);
+        }
+        if (diagnostics.metrics.open_land_pct !== null) {
+          metricSamples.open_land_pct.push(diagnostics.metrics.open_land_pct);
+        }
+        if (diagnostics.metrics.ghi_kwh_m2_day !== null) {
+          metricSamples.ghi_kwh_m2_day.push(diagnostics.metrics.ghi_kwh_m2_day);
+        }
+
         const key = rejectionReason === "passed" ? "passed" : rejectionReason;
         rejected_by[key] = (rejected_by[key] ?? 0) + 1;
+        if (hardReject && rejectionReason !== "passed") {
+          hardRejectCounts[rejectionReason] = (hardRejectCounts[rejectionReason] ?? 0) + 1;
+        }
 
-        // Update heartbeat activity
-        currentActivity = `Scanning cell ${processed}/${total} — ${passedSites.length} passed so far`;
+        currentActivity = `Scanning cell ${processed}/${total} — ${passedSites.length} strict passes so far`;
 
-        // Emit cell events
         emit({
           type: "cell_result",
           cellId: result.cell.id,
           bbox: result.cell.bboxDeg,
-          verdict:
-            rejectionReason === "passed"
-              ? "passed"
-              : isSoftReject(rejectionReason)
-              ? "soft_reject"
-              : "hard_reject",
+          verdict,
           rejectionReason,
-          site: rejectionReason === "passed" ? site : undefined,
+          site: diagnostics.candidate_kind === "strict_pass" ? site : undefined,
+          diagnostics,
         });
 
-        if (rejectionReason === "passed") {
+        if (diagnostics.candidate_kind === "strict_pass") {
           passedSites.push(site);
+        } else if (diagnostics.borderline) {
+          borderlineCandidates.push({
+            cell_id: result.cell.id,
+            score: diagnostics.score,
+            reason: rejectionReason,
+            metrics: diagnostics.metrics,
+            thresholds: diagnostics.thresholds,
+          });
+        }
+
+        if (diagnostics.candidate_kind !== "strict_pass") {
+          rejectedExamples.push({
+            cell_id: result.cell.id,
+            score: diagnostics.score,
+            rejection_reason: rejectionReason,
+            metrics: diagnostics.metrics,
+            thresholds: diagnostics.thresholds,
+          });
         }
 
         recentResults.push(
-          `${result.cell.id}: ${rejectionReason}${
-            rejectionReason === "passed" ? ` (score=${site.overall_site_score})` : ""
-          }`
+          `${result.cell.id}: ${rejectionReason} (score=${diagnostics.score.toFixed(1)})`
         );
 
-        // Emit tally every 10 cells
         if (processed % 10 === 0) {
           emit({
             type: "tally_update",
@@ -210,19 +245,17 @@ export async function runStateScan(
           currentActivity = `Generating insight after ${processed} cells`;
           await maybeEmitInsight();
           currentStage = "scanning_cells";
-          currentActivity = `Scanning cell ${processed}/${total} — ${passedSites.length} passed so far`;
+          currentActivity = `Scanning cell ${processed}/${total} — ${passedSites.length} strict passes so far`;
         }
       },
     });
 
-    // Final insight
     if (recentResults.length > 0) {
       currentStage = "generating_insights";
       currentActivity = "Generating final insight summary";
       await maybeEmitInsight(true);
     }
 
-    // 6. Persist passing sites
     currentStage = "persisting_results";
     currentActivity = `Saving ${passedSites.length} candidate sites to database`;
     if (run && passedSites.length > 0) {
@@ -233,20 +266,29 @@ export async function runStateScan(
       }
     }
 
-    // 7. Finalize run
+    const summaryPayload = buildScanSummary({
+      stateCode,
+      total,
+      processed,
+      strictPassedSites: passedSites.length,
+      hardRejectCounts,
+      borderlineCandidates,
+      rejectedExamples,
+      metricSamples,
+      rejectedBy: rejected_by,
+    });
+    const summary = buildSummaryLine(total, passedSites.length, rejected_by, summaryPayload);
+
     currentStage = "finalizing";
     currentActivity = "Finalizing analysis run record";
-    const summary = `Grid scan: ${total} cells processed, ${passedSites.length} passed. Rejected: ${Object.entries(rejected_by).map(([k, v]) => `${k}=${v}`).join(", ")}`;
-
     if (run) {
       try {
-        await completeAnalysisRunWithTally(run.id, "completed", summary, null, rejected_by);
+        await completeAnalysisRunWithTally(run.id, "completed", summary, summaryPayload, rejected_by);
       } catch {
         // non-fatal
       }
     }
 
-    // Final tally
     emit({
       type: "tally_update",
       engine: "grid",
@@ -265,6 +307,7 @@ export async function runStateScan(
       passed: passedSites.length,
       total,
       rejected_by: { ...rejected_by },
+      scan_summary: summaryPayload,
       at: new Date().toISOString(),
     });
 
@@ -275,14 +318,11 @@ export async function runStateScan(
       total,
       rejected_by,
       sites: passedSites,
+      scan_summary: summaryPayload,
     };
   } catch (error) {
     const cancelled = signal?.aborted ?? false;
-    const msg = cancelled
-      ? "scan_cancelled"
-      : error instanceof Error
-      ? error.message
-      : "scan_failed";
+    const msg = cancelled ? "scan_cancelled" : error instanceof Error ? error.message : "scan_failed";
     if (run) {
       try {
         await completeAnalysisRun(run.id, cancelled ? "cancelled" : "failed", msg, null);
@@ -305,8 +345,111 @@ export async function runStateScan(
   }
 }
 
-function isSoftReject(reason: RejectionReason): boolean {
-  return reason === "low_overall_score" || reason === "expensive_land" || reason === "far_infra";
+function isHardReject(site: CandidateSite, diagnostics: GridCellDiagnostics): boolean {
+  return (
+    site.in_protected_area === true ||
+    site.in_flood_zone === true ||
+    (diagnostics.metrics.mean_slope_percent !== null &&
+      diagnostics.metrics.mean_slope_percent > (diagnostics.thresholds.max_hard_reject_slope_percent ?? Infinity)) ||
+    (diagnostics.metrics.open_land_pct !== null &&
+      diagnostics.metrics.open_land_pct < (diagnostics.thresholds.min_hard_reject_open_land_pct ?? -Infinity))
+  );
+}
+
+function buildScanSummary(args: {
+  stateCode: string;
+  total: number;
+  processed: number;
+  strictPassedSites: number;
+  hardRejectCounts: Record<string, number>;
+  borderlineCandidates: GridCandidateExample[];
+  rejectedExamples: GridRejectedExample[];
+  metricSamples: {
+    mean_slope_percent: number[];
+    open_land_pct: number[];
+    ghi_kwh_m2_day: number[];
+  };
+  rejectedBy: Record<string, number>;
+}): GridScanSummary {
+  const topBorderline = [...args.borderlineCandidates]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 20);
+  const worstRejected = [...args.rejectedExamples]
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 20);
+  const warnings: string[] = [];
+
+  const onlySlopeOpenLandRejects =
+    args.strictPassedSites === 0 &&
+    (args.rejectedBy.high_slope ?? 0) + (args.rejectedBy.low_open_land ?? 0) === args.total;
+  if (args.stateCode === "AZ" && args.processed >= AZ_SANITY_CHECK_MIN_CELLS && onlySlopeOpenLandRejects) {
+    warnings.push(
+      "AZ sanity warning: every grid cell was rejected only by slope/open-land. This likely indicates overly strict thresholds or a metric calculation issue. Inspect metric distributions."
+    );
+  }
+  if (args.strictPassedSites === 0 && topBorderline.length > 0) {
+    warnings.push(
+      "No strict-pass sites found under current thresholds; showing best borderline candidates for calibration."
+    );
+  }
+
+  return {
+    state_code: args.stateCode,
+    total_cells: args.total,
+    processed_cells: args.processed,
+    strict_passed_sites: args.strictPassedSites,
+    borderline_candidates_count: args.borderlineCandidates.length,
+    hard_reject_counts: args.hardRejectCounts,
+    metric_distribution: {
+      mean_slope_percent: summarizeDistribution(args.metricSamples.mean_slope_percent),
+      open_land_pct: summarizeDistribution(args.metricSamples.open_land_pct),
+      ghi_kwh_m2_day: summarizeDistribution(args.metricSamples.ghi_kwh_m2_day),
+    },
+    top_20_borderline_candidates: topBorderline,
+    worst_20_rejected_examples: worstRejected,
+    warnings,
+  };
+}
+
+function summarizeDistribution(values: number[]) {
+  if (values.length === 0) {
+    return { min: null, p25: null, median: null, p75: null, max: null };
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  return {
+    min: round(sorted[0]),
+    p25: round(percentile(sorted, 0.25)),
+    median: round(percentile(sorted, 0.5)),
+    p75: round(percentile(sorted, 0.75)),
+    max: round(sorted[sorted.length - 1]),
+  };
+}
+
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 1) return sorted[0];
+  const index = (sorted.length - 1) * p;
+  const lower = Math.floor(index);
+  const upper = Math.ceil(index);
+  if (lower === upper) return sorted[lower];
+  const weight = index - lower;
+  return sorted[lower] * (1 - weight) + sorted[upper] * weight;
+}
+
+function round(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function buildSummaryLine(
+  total: number,
+  passed: number,
+  rejectedBy: Record<string, number>,
+  summary: GridScanSummary
+): string {
+  return `Grid scan: ${total} cells processed, ${passed} strict passes, ${summary.borderline_candidates_count} borderline candidates. Rejected: ${Object.entries(
+    rejectedBy
+  )
+    .map(([k, v]) => `${k}=${v}`)
+    .join(", ")}`;
 }
 
 async function narrateScanBatch(
@@ -368,7 +511,6 @@ async function completeAnalysisRunWithTally(
       [runId, status, notes, debugJson, JSON.stringify(rejectedBy)]
     );
   } catch {
-    // Column may not exist yet — fall back to basic update
     await pool.query(
       `UPDATE analysis_runs SET status=$2, completed_at=NOW(), notes=$3, gemini_debug_json=$4, gemini_debug_enabled=true, gemini_debug_version='v2' WHERE id=$1`,
       [runId, status, notes, debugJson]
