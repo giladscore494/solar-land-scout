@@ -1,0 +1,26 @@
+# Parcel Data Sources
+
+This research pipeline aggregates public/open/accessible GIS sources. Licensing and commercial use must be reviewed per source before production/commercial use.
+
+| Source | URL | Type | Coverage | Geometry | License note | Import command | Limitations |
+|---|---|---|---|---|---|---|---|
+| BLM National PLSS CadNSDI | https://gis.blm.gov/arcgis/rest/services/Cadastral/BLM_Natl_PLSS_CadNSDI/MapServer/1 | plss | National fallback | Parcel-like | Federal cadastral fallback for research only; not assessor parcels; review BLM terms before production/commercial use. | `npm run import:parcels:plss` | PLSS sections/aliquots, not true assessor parcel boundaries. |
+| Arizona State Trust Parcels | https://land.az.gov/arcgis/rest/services/StateTrustLand/MapServer/0 | state_trust_parcels | Arizona | True parcel | Arizona State Land Department terms still apply; commercial rights not cleared. | `tsx scripts/import-parcels.ts --source az_state_trust_parcels` | Service URL still needs verification/discovery. |
+| Maricopa County Parcels | https://gisrest.maricopa.gov/arcgis/rest/services/Assessor/PublicParcels/MapServer/0 | county_parcels | Maricopa County, AZ | True parcel | Public research access only; county terms still control downstream use. | `tsx scripts/import-parcels.ts --source az_maricopa_parcels` | Partial county-only coverage. |
+| Pima County Parcels | https://gisopendata.pima.gov/datasets/parcels | county_parcels | Pima County, AZ | True parcel | Research-only until county licensing and exact service URL are reviewed. | `tsx scripts/import-parcels.ts --source az_pima_parcels` | Needs URL discovery. |
+| Pinal County Parcels | https://gis.pinal.gov/arcgis/rest/services/Parcels/MapServer/0 | county_parcels | Pinal County, AZ | True parcel | Public research access only; commercial rights not cleared. | `tsx scripts/import-parcels.ts --source az_pinal_parcels` | Partial county-only coverage. |
+| Phoenix City Parcels | https://opendata.arcgis.com/datasets/phoenix::parcels | city_parcels | Phoenix, AZ | True parcel | Municipal/public-access data for research only; authoritative status may be lower than county parcels. | `tsx scripts/import-parcels.ts --source az_phoenix_parcels` | Needs URL discovery and overlaps county coverage. |
+| Florida Statewide Parcels | https://services.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/Florida_Parcels/FeatureServer/0 | statewide_parcels | Florida | True parcel | Statewide parcel aggregation is research-grade only; review state/county terms before production/commercial use. | `tsx scripts/import-parcels.ts --source fl_statewide_parcels` | URL/access still needs verification. |
+| Wisconsin Statewide Parcel Map | https://www.sco.wisc.edu/parcels/ | statewide_parcels | Wisconsin | True parcel | University/state source appears publicly accessible for research; commercial rights not cleared. | `tsx scripts/import-parcels.ts --source wi_statewide_parcels` | Usually distributed as file geodatabase; GDAL may be required. |
+| North Carolina Parcels | https://services.nconemap.gov/secure/rest/services/Cadastral/Parcels/MapServer/0 | statewide_parcels | North Carolina | True parcel | NC OneMap and county licensing must be reviewed before production/commercial use. | `tsx scripts/import-parcels.ts --source nc_statewide_parcels` | URL/access still needs verification. |
+| Massachusetts Property Tax Parcels | https://www.mass.gov/info-details/massgis-data-property-tax-parcels | statewide_parcels | Massachusetts | True parcel | Research use only until MassGIS and local licensing is reviewed. | `tsx scripts/import-parcels.ts --source ma_property_tax_parcels` | Download workflow still needs URL discovery; zipped shapefile/GDAL path may be required. |
+| Nebraska Statewide Parcels | https://gis.ne.gov/arcgis/rest/services/Parcels/MapServer/0 | statewide_parcels | Nebraska | True parcel | Research-only until Nebraska source terms are reviewed for production/commercial use. | `tsx scripts/import-parcels.ts --source ne_statewide_parcels` | URL/access still needs verification. |
+| Oregon Taxlots | https://www.oregon.gov/geo/Pages/index.aspx | statewide_parcels | Oregon | True parcel | Research access only; production/commercial licensing not cleared. | `tsx scripts/import-parcels.ts --source or_taxlots` | Needs URL discovery and likely file download/GDAL flow. |
+| Washington Current Parcels | https://geo.wa.gov/datasets/wa-geospatial-open-data-parcels | statewide_parcels | Washington | True parcel | Public-access research source only; confirm state/county terms before production/commercial use. | `tsx scripts/import-parcels.ts --source wa_current_parcels` | Needs URL discovery and likely file geodatabase import. |
+
+## Notes
+
+- Higher-authority county sources should outrank statewide and PLSS fallbacks during unification.
+- Failed or undiscovered sources are skipped and reported rather than crashing the full import run.
+- If GDAL/ogr2ogr is unavailable, file geodatabase and zipped shapefile imports will return a clear setup error instead of silently failing.
+- The `scanner_parcels` compatibility view exposes unified parcel IDs as text so the existing scanner can consume either legacy parcels or unified parcels through one interface.

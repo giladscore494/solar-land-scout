@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
     state_code?: string;
     language?: "en" | "he";
     engine?: "grid" | "parcel";
+    research_mode?: boolean;
   } | null;
   const stateCode = body?.state_code?.toUpperCase();
   if (!stateCode) {
@@ -52,7 +53,10 @@ export async function POST(req: NextRequest) {
   if (!acceptsSSE) {
     // Backward-compatible terminal JSON response
     try {
-      const result = await runScan(stateCode, { signal: req.signal });
+        const result = await runScan(stateCode, {
+          signal: req.signal,
+          researchMode: body?.research_mode,
+        });
       return NextResponse.json({
         run_id: result.runId,
         status: "completed",
@@ -105,6 +109,7 @@ export async function POST(req: NextRequest) {
         requestedEngine,
         fallbackReason,
         dbHealth,
+        researchMode: body?.research_mode,
       })
         .catch((err: unknown) => {
           const cancelled = req.signal.aborted;
