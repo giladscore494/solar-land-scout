@@ -8,7 +8,8 @@ interface Props {
 }
 
 export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
-  const { status, progress, tally, insights, activityLine, currentStage, errorMessage, cancelled } = scanState;
+  const { status, engine, progress, tally, insights, activityLine, currentStage, errorMessage, cancelled, debugLog } =
+    scanState;
 
   if (status === "idle") return null;
 
@@ -31,6 +32,8 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
               ? "Scanning…"
               : status === "done"
               ? "Complete"
+              : status === "cancelled"
+              ? "Cancelled"
               : cancelled
               ? "Cancelled"
               : "Error"}
@@ -45,6 +48,11 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
             style={{ width: `${pct}%` }}
           />
         </div>
+      </div>
+
+      <div className="mb-2 flex items-center justify-between text-[10.5px] uppercase tracking-[0.16em] text-ink-400">
+        <span>{engine ? `${engine} engine` : "scan"}</span>
+        {currentStage && <span>{currentStage.replaceAll("_", " ")}</span>}
       </div>
 
       {/* Live activity line */}
@@ -92,10 +100,24 @@ export default function ScanNarrativePanel({ scanState, onCancel }: Props) {
         </div>
       )}
 
+      {/* Recent debug lines */}
+      {debugLog.length > 0 && (
+        <div className="mb-3 rounded-md border border-line bg-bg-900/40 px-2 py-1.5">
+          <div className="mb-1 text-[10px] uppercase tracking-[0.16em] text-ink-500">debug</div>
+          <div className="space-y-1">
+            {debugLog.slice(0, 4).map((line, i) => (
+              <div key={i} className="font-mono text-[10.5px] text-ink-400">
+                {line}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Error / cancellation detail */}
-      {status === "error" && (
+      {(status === "error" || status === "cancelled") && (
         <div className="mb-2 rounded-md bg-red-500/10 px-2 py-1.5 text-[11px] text-red-300">
-          {cancelled ? (
+          {cancelled || status === "cancelled" ? (
             <span>Scan cancelled by user.</span>
           ) : (
             <span>

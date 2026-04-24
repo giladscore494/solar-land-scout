@@ -91,6 +91,7 @@ export async function POST(req: NextRequest) {
           const cancelled = req.signal.aborted;
           emit({
             type: "scan_error",
+            engine,
             message: cancelled
               ? "scan_cancelled"
               : err instanceof Error
